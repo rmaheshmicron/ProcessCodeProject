@@ -62,8 +62,21 @@ def main():
     part.set_seg(selected_seg)
     
     form_factor_options = [
-        "SODIMM - 69.6mm x 30mm x 3.0mm",
-        "UDIMM - 133.35mm x 31.25mm x 3.8mm",
+        "CAMM2",
+        "CDIMM",
+        "CSODIMM"
+        "CUDIMM",
+        "DDIMM",
+        "EUDIMM",
+        "LRDIMM",
+        "MINIRDIMM",
+        "RDIMM",
+        "SOCAMM",
+        "SOCAMM2",
+        "SODIMM",
+        "SOEDIMM",
+        "TFF MRDIMM",
+        "UDIMM",
         "Other"
     ]
     selected_form_factor = st.selectbox("Form Factor", options=form_factor_options)
