@@ -52,7 +52,7 @@ class PartSpecification:
 
 
 def main():
-    st.title("Process Code Generator")
+    st.title("Process Code & Part Specification Generator")
     
     part = PartSpecification()
     
