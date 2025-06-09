@@ -55,75 +55,109 @@ def main():
     st.title("Process Code Generator")
     st.write("Enter the details for your process code below:")
     
-
     part = PartSpecification()
     
-    seg_options = ["Client", "Server"]
-    selected_seg = st.selectbox("Market Segment", options=seg_options)
-    part.set_seg(selected_seg)
+    # Create tabs for the two different input methods
+    tab1, tab2 = st.tabs(["Process Code Generator", "Part Specification Generator"])
     
-    form_factor_options = [
-        "CAMM2",
-        "CDIMM",
-        "CSODIMM",
-        "CUDIMM",
-        "DDIMM",
-        "EUDIMM",
-        "LRDIMM",
-        "MINIRDIMM",
-        "RDIMM",
-        "SOCAMM",
-        "SOCAMM2",
-        "SODIMM",
-        "SOEDIMM",
-        "TFF MRDIMM",
-        "UDIMM",
-        "Other"
-    ]
-    selected_form_factor = st.selectbox("Form Factor", options=form_factor_options)
+    with tab1:
+        seg_options = ["Client", "Server"]
+        selected_seg = st.selectbox("Market Segment", options=seg_options, key="seg_process")
+        
+        form_factor_options = [
+            "CAMM2",
+            "CDIMM",
+            "CSODIMM",
+            "CUDIMM",
+            "DDIMM",
+            "EUDIMM",
+            "LRDIMM",
+            "MINIRDIMM",
+            "RDIMM",
+            "SOCAMM",
+            "SOCAMM2",
+            "SODIMM",
+            "SOEDIMM",
+            "TFF MRDIMM",
+            "UDIMM",
+            "Other"
+        ]
+        selected_form_factor = st.selectbox("Form Factor", options=form_factor_options, key="ff_process")
+        
+        if selected_form_factor == "Other":
+            custom_form_factor = st.text_input("Enter custom form factor", key="custom_ff_process")
+            form_factor_value = custom_form_factor if custom_form_factor else None
+        else:
+            form_factor_value = selected_form_factor
+        
+        spd_options = ["Over 8000", "Under 8000"]
+        selected_spd = st.selectbox("Speed", options=spd_options, key="spd_process")
+        
+        process_code_valid = True
+        if st.button("Generate from Process Code Inputs"):
+            # Validate all fields are filled
+            if not form_factor_value:
+                st.error("Please enter a form factor")
+                process_code_valid = False
+            
+            if process_code_valid:
+                part.set_seg(selected_seg)
+                part.set_form_factor(form_factor_value)
+                part.set_spd(selected_spd)
+                st.session_state.result = str(part)
+                st.session_state.show_result = True
     
-    if selected_form_factor == "Other":
-        custom_form_factor = st.text_input("Enter custom form factor")
-        if custom_form_factor:
-            part.set_form_factor(custom_form_factor)
-    else:
-        part.set_form_factor(selected_form_factor)
+    with tab2:
+        st.write("Enter the details for your part specification below:")
+        
+        mpn = st.text_input("Marketing Part Number (MPN)", key="mpn_part")
+        
+        component_type_options = [
+            "PMIC", 
+            "RCD", 
+            "CKD", 
+            "Temp Sensor", 
+            "SPD/Hub", 
+            "Voltage Regulator", 
+            "Inductor", 
+            "Data Buffer", 
+            "Muxed RCD", 
+            "Other"
+        ]
+        selected_component_type = st.selectbox("Component Type", options=component_type_options, key="comp_part")
+        
+        process_code = st.text_input("Process Code", key="pc_part")
+        
+        part_spec_valid = True
+        if st.button("Generate from Part Specification"):
+            # Validate all fields are filled
+            if not mpn:
+                st.error("Please enter a Marketing Part Number")
+                part_spec_valid = False
+            
+            if not process_code:
+                st.error("Please enter a Process Code")
+                part_spec_valid = False
+            
+            if part_spec_valid:
+                part.set_mpn(mpn)
+                part.set_component_type(selected_component_type)
+                part.set_process_code(process_code)
+                st.session_state.result = str(part)
+                st.session_state.show_result = True
     
-    spd_options = ["Over 8000", "Under 8000"]
-    selected_spd = st.selectbox("Speed", options=spd_options)
-    part.set_spd(selected_spd)
+    if 'show_result' not in st.session_state:
+        st.session_state.show_result = False
+        st.session_state.result = ""
     
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        st.markdown("<h3 style='text-align: center;'>Or</h3>", unsafe_allow_html=True)
-    
-    st.title("Part Specification Generator")
-    st.write("Enter the details for your part specification below:")
-    
-    mpn = st.text_input("Marketing Part Number (MPN)")
-    part.set_mpn(mpn)
-    
-    component_type_options = [
-        "PMIC", 
-        "RCD", 
-        "CKD", 
-        "Temp Sensor", 
-        "SPD/Hub", 
-        "Voltage Regulator", 
-        "Inductor", 
-        "Data Buffer", 
-        "Muxed RCD", 
-        "Other"
-    ]
-    selected_component_type = st.selectbox("Component Type", options=component_type_options)
-    part.set_component_type(selected_component_type)
-    
-    process_code = st.text_input("Process Code")
-    part.set_process_code(process_code)
-    
-    st.header("Result")
-    if st.button("Generate Specification"):
-        st.text_area("Specification", str(part), height=200)
+    if st.session_state.show_result:
+        st.header("Result")
+        st.text_area("Specification", st.session_state.result, height=200)
+        
+        if st.button("Clear and Start Over"):
+            st.session_state.show_result = False
+            st.session_state.result = ""
+            st.experimental_rerun()
 
 
 if __name__ == "__main__":
