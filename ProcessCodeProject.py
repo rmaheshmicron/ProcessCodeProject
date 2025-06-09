@@ -97,7 +97,7 @@ def main():
     with col2:
         st.markdown("<h3 style='text-align: center;'>Or</h3>", unsafe_allow_html=True)
     
-    st.header("Part Specification Generator")
+    st.header("Part Specification Generatorrrrrr")
     st.write("Enter the details for your part specification below:")
     
     mpn = st.text_input("Marketing Part Number (MPN)")
