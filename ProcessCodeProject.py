@@ -7,6 +7,7 @@ class PartSpecification:
         self.spd = None
         self.mpn = None
         self.process_code = None
+        self.component_type = None
     
     def set_seg(self, seg_value):
         self.seg = seg_value
@@ -28,6 +29,10 @@ class PartSpecification:
         self.process_code = process_code_value
         return self
     
+    def set_component_type(self, component_type_value):
+        self.component_type = component_type_value
+        return self
+    
     def __str__(self):
         result = []
         if self.seg:
@@ -38,6 +43,8 @@ class PartSpecification:
             result.append(f"SPD: {self.spd}")
         if self.mpn:
             result.append(f"MPN: {self.mpn}")
+        if self.component_type:
+            result.append(f"Component Type: {self.component_type}")
         if self.process_code:
             result.append(f"Process Code: {self.process_code}")
         
@@ -45,8 +52,8 @@ class PartSpecification:
 
 
 def main():
-    st.title("Part Specification Generator")
-    st.write("Enter the details for your part specification below:")
+    st.title("Process Code Generator")
+    st.write("Enter the details for your process code below:")
     
 
     part = PartSpecification()
@@ -90,8 +97,26 @@ def main():
     with col2:
         st.markdown("<h3 style='text-align: center;'>Or</h3>", unsafe_allow_html=True)
     
+    st.header("Part Specification Generator")
+    st.write("Enter the details for your part specification below:")
+    
     mpn = st.text_input("Marketing Part Number (MPN)")
     part.set_mpn(mpn)
+    
+    component_type_options = [
+        "PMIC", 
+        "RCD", 
+        "CKD", 
+        "Temp Sensor", 
+        "SPD/Hub", 
+        "Voltage Regulator", 
+        "Inductor", 
+        "Data Buffer", 
+        "Muxed RCD", 
+        "Other"
+    ]
+    selected_component_type = st.selectbox("Component Type", options=component_type_options)
+    part.set_component_type(selected_component_type)
     
     process_code = st.text_input("Process Code")
     part.set_process_code(process_code)
