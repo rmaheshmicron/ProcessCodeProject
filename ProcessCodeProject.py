@@ -97,7 +97,7 @@ def main():
     with col2:
         st.markdown("<h3 style='text-align: center;'>Or</h3>", unsafe_allow_html=True)
     
-    st.header("Part Specification Generatorrrrrr")
+    st.title("Part Specification Generator")
     st.write("Enter the details for your part specification below:")
     
     mpn = st.text_input("Marketing Part Number (MPN)")
@@ -121,17 +121,9 @@ def main():
     process_code = st.text_input("Process Code")
     part.set_process_code(process_code)
     
-    st.header("Part Specification")
+    st.header("Result")
     if st.button("Generate Specification"):
         st.text_area("Specification", str(part), height=200)
-        
-        spec_text = str(part)
-        st.download_button(
-            label="Download Specification",
-            data=spec_text,
-            file_name="part_specification.txt",
-            mime="text/plain"
-        )
 
 
 if __name__ == "__main__":
