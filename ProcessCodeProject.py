@@ -9,32 +9,26 @@ class PartSpecification:
         self.process_code = None
     
     def set_seg(self, seg_value):
-        """Set SEG: Client or Server"""
         self.seg = seg_value
         return self
     
     def set_form_factor(self, form_factor_value):
-        """Set Form Factor: Footprint and Size (Overall Dimension - x, y, z plane & SODIMM or UDIMM)"""
         self.form_factor = form_factor_value
         return self
     
     def set_spd(self, spd_value):
-        """Set SPD: Speed of the part (Over 8000/Under 8000)"""
         self.spd = spd_value
         return self
     
     def set_mpn(self, mpn_value):
-        """Set MPN: Long text of code given for a part"""
         self.mpn = mpn_value
         return self
     
     def set_process_code(self, process_code_value):
-        """Set Process Code: The actual process code itself (Should be in Text)"""
         self.process_code = process_code_value
         return self
     
     def __str__(self):
-        """String representation of the part specification"""
         result = []
         if self.seg:
             result.append(f"SEG: {self.seg}")
@@ -58,7 +52,7 @@ def main():
     part = PartSpecification()
     
     seg_options = ["Client", "Server"]
-    selected_seg = st.selectbox("SEG", options=seg_options)
+    selected_seg = st.selectbox("Market Segment", options=seg_options)
     part.set_seg(selected_seg)
     
     form_factor_options = [
@@ -89,7 +83,7 @@ def main():
         part.set_form_factor(selected_form_factor)
     
     spd_options = ["Over 8000", "Under 8000"]
-    selected_spd = st.selectbox("SPD", options=spd_options)
+    selected_spd = st.selectbox("Speed", options=spd_options)
     part.set_spd(selected_spd)
     
     col1, col2, col3 = st.columns([1, 1, 1])
