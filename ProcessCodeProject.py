@@ -53,14 +53,14 @@ class PartSpecification:
 
 def main():
     st.title("Process Code Generator")
-    st.write("Enter the details for your process code below:")
     
     part = PartSpecification()
     
-    # Create tabs for the two different input methods
     tab1, tab2 = st.tabs(["Process Code Generator", "Part Specification Generator"])
     
     with tab1:
+        st.write("Enter the details for your process code below:")
+        
         seg_options = ["Client", "Server"]
         selected_seg = st.selectbox("Market Segment", options=seg_options, key="seg_process")
         
@@ -95,7 +95,6 @@ def main():
         
         process_code_valid = True
         if st.button("Generate from Process Code Inputs"):
-            # Validate all fields are filled
             if not form_factor_value:
                 st.error("Please enter a form factor")
                 process_code_valid = False
@@ -130,19 +129,16 @@ def main():
         
         part_spec_valid = True
         if st.button("Generate from Part Specification"):
-            # Validate all fields are filled
-            if not mpn:
-                st.error("Please enter a Marketing Part Number")
-                part_spec_valid = False
-            
-            if not process_code:
-                st.error("Please enter a Process Code")
+            if not mpn and not process_code:
+                st.error("Please enter either a Marketing Part Number or a Process Code")
                 part_spec_valid = False
             
             if part_spec_valid:
-                part.set_mpn(mpn)
+                if mpn:
+                    part.set_mpn(mpn)
+                if process_code:
+                    part.set_process_code(process_code)
                 part.set_component_type(selected_component_type)
-                part.set_process_code(process_code)
                 st.session_state.result = str(part)
                 st.session_state.show_result = True
     
