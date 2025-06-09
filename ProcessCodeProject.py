@@ -64,7 +64,7 @@ def main():
     form_factor_options = [
         "CAMM2",
         "CDIMM",
-        "CSODIMM"
+        "CSODIMM",
         "CUDIMM",
         "DDIMM",
         "EUDIMM",
