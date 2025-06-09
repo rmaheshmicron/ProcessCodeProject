@@ -90,7 +90,7 @@ def main():
     with col2:
         st.markdown("<h3 style='text-align: center;'>Or</h3>", unsafe_allow_html=True)
     
-    mpn = st.text_input("MPN (Part Number)")
+    mpn = st.text_input("Marketing Part Number (MPN)")
     part.set_mpn(mpn)
     
     process_code = st.text_input("Process Code")
