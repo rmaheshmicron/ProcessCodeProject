@@ -94,7 +94,7 @@ def main():
         selected_spd = st.selectbox("Speed", options=spd_options, key="spd_process")
         
         process_code_valid = True
-        if st.button("Generate from Process Code Inputs"):
+        if st.button("Generate Process Code"):
             if not form_factor_value:
                 st.error("Please enter a form factor")
                 process_code_valid = False
@@ -128,7 +128,7 @@ def main():
         process_code = st.text_input("Process Code", key="pc_part")
         
         part_spec_valid = True
-        if st.button("Generate from Part Specification"):
+        if st.button("Generate Part Specification"):
             if not mpn and not process_code:
                 st.error("Please enter either a Marketing Part Number or a Process Code")
                 part_spec_valid = False
