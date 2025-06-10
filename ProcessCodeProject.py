@@ -90,7 +90,7 @@ def main():
         else:
             form_factor_value = selected_form_factor
         
-        spd_options = ["Over 8000", "Under 8000"]
+        spd_options = ["4800","5600","6400","7200","8000","8600","9600","12800"]
         selected_spd = st.selectbox("Speed", options=spd_options, key="spd_process")
         
         process_code_valid = True
@@ -119,6 +119,7 @@ def main():
             "SPD/Hub", 
             "Voltage Regulator", 
             "Inductor", 
+            "Capacitor",
             "Data Buffer", 
             "Muxed RCD", 
             "Other"
