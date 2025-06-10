@@ -90,8 +90,8 @@ def main():
         else:
             form_factor_value = selected_form_factor
         
-        spd_options = ["4800","5600","6400","7200","8000","8600","9600","12800"]
-        selected_spd = st.selectbox("Speed", options=spd_options, key="spd_process")
+        spd_options = ["4800","5600","6400","7200","8000","8800","9600","12800"]
+        selected_spd = st.selectbox("Speed (MT/s)", options=spd_options, key="spd_process")
         
         process_code_valid = True
         if st.button("Generate Process Code"):
@@ -109,7 +109,7 @@ def main():
     with tab2:
         st.write("Enter the details for your part specification below:")
         
-        mpn = st.text_input("Marketing Part Number (MPN)", key="mpn_part")
+        mpn = st.text_input("Manufacturing Part Number (MPN)", key="mpn_part")
         
         component_type_options = [
             "PMIC", 
@@ -131,7 +131,7 @@ def main():
         part_spec_valid = True
         if st.button("Generate Part Specification"):
             if not mpn and not process_code:
-                st.error("Please enter either a Marketing Part Number or a Process Code")
+                st.error("Please enter either a Manufacturing Part Number or a Process Code")
                 part_spec_valid = False
             
             if part_spec_valid:
