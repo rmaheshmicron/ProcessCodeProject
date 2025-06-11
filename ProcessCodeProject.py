@@ -139,7 +139,8 @@ def load_data_from_sharepoint():
         username = st.sidebar.text_input("SharePoint Username", key="sp_username")
         password = st.sidebar.text_input("SharePoint Password", type="password", key="sp_password")
     
-    # SharePoint list names
+    # SharePoint list names and URLs
+    # Using the correct list names based on the URLs provided
     process_code_list = "Basic List"  # Process code list
     pcb_reference_list = "PCB Reference Table"  # PCB reference list
     
@@ -185,6 +186,7 @@ def load_data_from_sharepoint():
             st.sidebar.success(f"Successfully loaded process code data from SharePoint")
         except Exception as e:
             st.sidebar.error(f"Error loading process code data from SharePoint: {e}")
+            st.sidebar.info("Using embedded sample data for process code")
             data['process_code_df'] = pd.DataFrame()
         
         # Load PCB reference data from SharePoint list
@@ -216,6 +218,7 @@ def load_data_from_sharepoint():
             st.sidebar.success(f"Successfully loaded PCB reference data from SharePoint")
         except Exception as e:
             st.sidebar.error(f"Error loading PCB reference data from SharePoint: {e}")
+            st.sidebar.info("Using embedded sample data for PCB reference")
             data['module_pcb_reference_df'] = pd.DataFrame()
         
         # Load parts data from SharePoint list (using the same Basic List for this example)
@@ -252,12 +255,14 @@ def load_data_from_sharepoint():
             st.sidebar.success(f"Successfully loaded parts data from SharePoint")
         except Exception as e:
             st.sidebar.error(f"Error loading parts data from SharePoint: {e}")
+            st.sidebar.info("Using embedded sample data for parts")
             data['parts_df'] = pd.DataFrame()
             data['module_hw_validation_df'] = pd.DataFrame()
     
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {e}")
-        return None
+        st.sidebar.info("Using embedded sample data as fallback")
+        return get_embedded_sample_data()
     
     # If any dataframes are empty, use the embedded data as fallback
     if (data.get('process_code_df', pd.DataFrame()).empty or 
