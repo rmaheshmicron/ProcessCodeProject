@@ -123,7 +123,7 @@ def show_process_code_info():
 
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def load_data_from_sharepoint():
-    """Load data directly from SharePoint lists"""
+    """Load data directly from SharePoint lists using the specific URLs"""
     data = {}
     
     # SharePoint connection settings
@@ -136,13 +136,8 @@ def load_data_from_sharepoint():
     else:
         # For security, in a real application you should use Streamlit secrets
         # instead of collecting credentials in the UI
-        username = st.sidebar.text_input("SharePoint Username", key="sp_username")
+        username = st.sidebar.text_input("SharePoint Username (include @micron.com)", key="sp_username")
         password = st.sidebar.text_input("SharePoint Password", type="password", key="sp_password")
-    
-    # SharePoint list names and URLs
-    # Using the correct list names based on the URLs provided
-    process_code_list = "Basic List"  # Process code list
-    pcb_reference_list = "PCB Reference Table"  # PCB reference list
     
     # Check if we have the required SharePoint credentials
     if not (username and password):
@@ -155,51 +150,71 @@ def load_data_from_sharepoint():
         auth_context.acquire_token_for_user(username, password)
         ctx = ClientContext(sharepoint_site, auth_context)
         
-        # Load process code data from SharePoint list
+        # Load process code data from "Module HW Design Component Validations" list
         try:
-            # Get the list by title
-            process_code_sp_list = ctx.web.lists.get_by_title(process_code_list)
+            # This is the list for both process code and parts data
+            # URL: https://microncorp.sharepoint.com/sites/mdg/Lists/Basic%20List/AllItems.aspx
+            hw_validation_list = ctx.web.get_list_by_server_relative_url("/sites/mdg/Lists/Basic List")
             
             # Create a CAML query to get all items
             caml_query = CamlQuery()
             caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
             
             # Execute the query
-            items = process_code_sp_list.get_items(caml_query)
+            items = hw_validation_list.get_items(caml_query)
             ctx.load(items)
             ctx.execute_query()
             
-            # Convert to DataFrame
+            # Convert to DataFrame for process code data
             process_code_data = []
+            parts_data = []
+            
             for item in items:
                 item_properties = item.properties
-                process_code_data.append({
-                    'Market_Segment': item_properties.get('Market_Segment', ''),
-                    'Form_Factor': item_properties.get('Form_Factor', ''),
-                    'Speed': item_properties.get('Speed', ''),
-                    'Process_Code': item_properties.get('Process_Code', '')
-                })
+                
+                # Extract process code data
+                if all(key in item_properties for key in ['Market_Segment', 'Form_Factor', 'Speed', 'Process_Code']):
+                    process_code_data.append({
+                        'Market_Segment': item_properties.get('Market_Segment', ''),
+                        'Form_Factor': item_properties.get('Form_Factor', ''),
+                        'Speed': item_properties.get('Speed', ''),
+                        'Process_Code': item_properties.get('Process_Code', '')
+                    })
+                
+                # Extract parts data
+                if all(key in item_properties for key in ['MPN', 'Process_Code', 'Component_Type']):
+                    parts_data.append({
+                        'MPN': item_properties.get('MPN', ''),
+                        'Process_Code': item_properties.get('Process_Code', ''),
+                        'Component_Type': item_properties.get('Component_Type', ''),
+                        'Validation_Status': item_properties.get('Validation_Status', '')
+                    })
             
             process_code_df = pd.DataFrame(process_code_data)
             data['process_code_df'] = process_code_df
             
-            st.sidebar.success(f"Successfully loaded process code data from SharePoint")
+            parts_df = pd.DataFrame(parts_data)
+            data['parts_df'] = parts_df
+            data['module_hw_validation_df'] = parts_df.copy()
+            
+            st.sidebar.success(f"Successfully loaded HW validation data from SharePoint")
         except Exception as e:
-            st.sidebar.error(f"Error loading process code data from SharePoint: {e}")
-            st.sidebar.info("Using embedded sample data for process code")
+            st.sidebar.error(f"Error loading HW validation data from SharePoint: {e}")
             data['process_code_df'] = pd.DataFrame()
+            data['parts_df'] = pd.DataFrame()
+            data['module_hw_validation_df'] = pd.DataFrame()
         
-        # Load PCB reference data from SharePoint list
+        # Load PCB reference data from "PCB Reference Table" list
         try:
-            # Get the list by title
-            pcb_reference_sp_list = ctx.web.lists.get_by_title(pcb_reference_list)
+            # URL: https://microncorp.sharepoint.com/sites/mdg/Lists/PCB%20Reference%20Table/Main.aspx
+            pcb_reference_list = ctx.web.get_list_by_server_relative_url("/sites/mdg/Lists/PCB Reference Table")
             
             # Create a CAML query to get all items
             caml_query = CamlQuery()
             caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
             
             # Execute the query
-            items = pcb_reference_sp_list.get_items(caml_query)
+            items = pcb_reference_list.get_items(caml_query)
             ctx.load(items)
             ctx.execute_query()
             
@@ -218,46 +233,7 @@ def load_data_from_sharepoint():
             st.sidebar.success(f"Successfully loaded PCB reference data from SharePoint")
         except Exception as e:
             st.sidebar.error(f"Error loading PCB reference data from SharePoint: {e}")
-            st.sidebar.info("Using embedded sample data for PCB reference")
             data['module_pcb_reference_df'] = pd.DataFrame()
-        
-        # Load parts data from SharePoint list (using the same Basic List for this example)
-        try:
-            # Get the list by title (reusing the process code list for parts data in this example)
-            parts_sp_list = ctx.web.lists.get_by_title(process_code_list)
-            
-            # Create a CAML query to get all items
-            caml_query = CamlQuery()
-            caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-            
-            # Execute the query
-            items = parts_sp_list.get_items(caml_query)
-            ctx.load(items)
-            ctx.execute_query()
-            
-            # Convert to DataFrame
-            parts_data = []
-            for item in items:
-                item_properties = item.properties
-                parts_data.append({
-                    'MPN': item_properties.get('MPN', ''),
-                    'Process_Code': item_properties.get('Process_Code', ''),
-                    'Component_Type': item_properties.get('Component_Type', ''),
-                    'Validation_Status': item_properties.get('Validation_Status', '')
-                })
-            
-            parts_df = pd.DataFrame(parts_data)
-            data['parts_df'] = parts_df
-            
-            # Use the same data for validation
-            data['module_hw_validation_df'] = parts_df.copy()
-            
-            st.sidebar.success(f"Successfully loaded parts data from SharePoint")
-        except Exception as e:
-            st.sidebar.error(f"Error loading parts data from SharePoint: {e}")
-            st.sidebar.info("Using embedded sample data for parts")
-            data['parts_df'] = pd.DataFrame()
-            data['module_hw_validation_df'] = pd.DataFrame()
     
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {e}")
