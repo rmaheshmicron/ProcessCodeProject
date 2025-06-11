@@ -765,12 +765,26 @@ def main():
     with tab1:
         st.write("Enter the details for your process code below:")
         
-        # Get unique market segments from the data
-        seg_options = sorted(process_code_df['Market_Segment'].unique().tolist())
+        # Get unique market segments from the data - with error handling
+        try:
+            seg_options = sorted(process_code_df['Market_Segment'].unique().tolist())
+            if not seg_options:  # If list is empty
+                seg_options = ["Client", "Server"]  # Default values
+        except (KeyError, AttributeError, ValueError) as e:
+            st.warning(f"Could not load Market Segment options: {e}")
+            seg_options = ["Client", "Server"]  # Default values
+            
         selected_seg = st.selectbox("Market Segment", options=seg_options, key="seg_process")
         
-        # Get unique form factors from the data
-        form_factor_options = sorted(process_code_df['Form_Factor'].unique().tolist() + ["Other"])
+        # Get unique form factors from the data - with error handling
+        try:
+            form_factor_options = sorted(process_code_df['Form_Factor'].unique().tolist() + ["Other"])
+            if len(form_factor_options) <= 1:  # If only "Other" is present
+                form_factor_options = ["SODIMM", "UDIMM", "RDIMM", "LRDIMM", "Other"]  # Default values
+        except (KeyError, AttributeError, ValueError) as e:
+            st.warning(f"Could not load Form Factor options: {e}")
+            form_factor_options = ["SODIMM", "UDIMM", "RDIMM", "LRDIMM", "Other"]  # Default values
+            
         selected_form_factor = st.selectbox("Form Factor", options=form_factor_options, key="ff_process")
         
         if selected_form_factor == "Other":
@@ -779,8 +793,15 @@ def main():
         else:
             form_factor_value = selected_form_factor
         
-        # Get unique speed options from the data
-        spd_options = sorted(process_code_df['Speed'].unique().tolist())
+        # Get unique speed options from the data - with error handling
+        try:
+            spd_options = sorted(process_code_df['Speed'].unique().tolist())
+            if not spd_options:  # If list is empty
+                spd_options = ["4800", "5600", "6400", "7200", "8000"]  # Default values
+        except (KeyError, AttributeError, ValueError) as e:
+            st.warning(f"Could not load Speed options: {e}")
+            spd_options = ["4800", "5600", "6400", "7200", "8000"]  # Default values
+            
         selected_spd = st.selectbox("Speed", options=spd_options, key="spd_process")
         
         process_code_valid = True
@@ -821,8 +842,18 @@ def main():
         
         mpn = st.text_input("Manufacturing Part Number (MPN)", key="mpn_part")
         
-        # Get unique component types from the data
-        component_type_options = sorted(parts_df['Component_Type'].unique().tolist() + ["Other"])
+        # Get unique component types from the data - with error handling
+        try:
+            if 'Component_Type' in parts_df.columns and not parts_df.empty:
+                component_type_options = sorted(parts_df['Component_Type'].unique().tolist() + ["Other"])
+                if len(component_type_options) <= 1:  # If only "Other" is present
+                    component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]  # Default values
+            else:
+                component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]  # Default values
+        except (KeyError, AttributeError, ValueError) as e:
+            st.warning(f"Could not load Component Type options: {e}")
+            component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]  # Default values
+            
         selected_component_type = st.selectbox("Component Type", options=component_type_options, key="comp_part")
         
         process_code = st.text_input("Process Code", key="pc_part")
