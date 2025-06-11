@@ -767,10 +767,11 @@ def main():
         
         # Get unique market segments from the data - with error handling
         try:
-            seg_options = sorted(process_code_df['Market_Segment'].unique().tolist())
-            if not seg_options:  # If list is empty
-                seg_options = ["Client", "Server"]  # Default values
-        except (KeyError, AttributeError, ValueError) as e:
+            seg_options = process_code_df['Market_Segment'].unique().tolist()
+            # Convert all values to strings to ensure consistent sorting
+            seg_options = [str(x) for x in seg_options if x is not None]
+            seg_options = sorted(seg_options) if seg_options else ["Client", "Server"]
+        except (KeyError, AttributeError, ValueError, TypeError) as e:
             st.warning(f"Could not load Market Segment options: {e}")
             seg_options = ["Client", "Server"]  # Default values
             
@@ -778,10 +779,11 @@ def main():
         
         # Get unique form factors from the data - with error handling
         try:
-            form_factor_options = sorted(process_code_df['Form_Factor'].unique().tolist() + ["Other"])
-            if len(form_factor_options) <= 1:  # If only "Other" is present
-                form_factor_options = ["SODIMM", "UDIMM", "RDIMM", "LRDIMM", "Other"]  # Default values
-        except (KeyError, AttributeError, ValueError) as e:
+            form_factor_options = process_code_df['Form_Factor'].unique().tolist()
+            # Convert all values to strings to ensure consistent sorting
+            form_factor_options = [str(x) for x in form_factor_options if x is not None]
+            form_factor_options = sorted(form_factor_options) + ["Other"] if form_factor_options else ["SODIMM", "UDIMM", "RDIMM", "LRDIMM", "Other"]
+        except (KeyError, AttributeError, ValueError, TypeError) as e:
             st.warning(f"Could not load Form Factor options: {e}")
             form_factor_options = ["SODIMM", "UDIMM", "RDIMM", "LRDIMM", "Other"]  # Default values
             
@@ -795,10 +797,11 @@ def main():
         
         # Get unique speed options from the data - with error handling
         try:
-            spd_options = sorted(process_code_df['Speed'].unique().tolist())
-            if not spd_options:  # If list is empty
-                spd_options = ["4800", "5600", "6400", "7200", "8000"]  # Default values
-        except (KeyError, AttributeError, ValueError) as e:
+            spd_options = process_code_df['Speed'].unique().tolist()
+            # Convert all values to strings to ensure consistent sorting
+            spd_options = [str(x) for x in spd_options if x is not None]
+            spd_options = sorted(spd_options) if spd_options else ["4800", "5600", "6400", "7200", "8000"]
+        except (KeyError, AttributeError, ValueError, TypeError) as e:
             st.warning(f"Could not load Speed options: {e}")
             spd_options = ["4800", "5600", "6400", "7200", "8000"]  # Default values
             
@@ -845,14 +848,15 @@ def main():
         # Get unique component types from the data - with error handling
         try:
             if 'Component_Type' in parts_df.columns and not parts_df.empty:
-                component_type_options = sorted(parts_df['Component_Type'].unique().tolist() + ["Other"])
-                if len(component_type_options) <= 1:  # If only "Other" is present
-                    component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]  # Default values
+                component_types = parts_df['Component_Type'].unique().tolist()
+                # Convert all values to strings to ensure consistent sorting
+                component_types = [str(x) for x in component_types if x is not None]
+                component_type_options = sorted(component_types) + ["Other"] if component_types else ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]
             else:
-                component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]  # Default values
-        except (KeyError, AttributeError, ValueError) as e:
+                component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]
+        except (KeyError, AttributeError, ValueError, TypeError) as e:
             st.warning(f"Could not load Component Type options: {e}")
-            component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]  # Default values
+            component_type_options = ["PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Data Buffer", "Other"]
             
         selected_component_type = st.selectbox("Component Type", options=component_type_options, key="comp_part")
         
