@@ -167,19 +167,28 @@ def load_data_from_sharepoint():
             with st.sidebar.expander("Available SharePoint Lists", expanded=True):
                 st.write(", ".join(available_lists))
                 
-            # Check for Module HW Design Validation subsite
+            # Check for Module HW Design subsite
             subsites = ctx.web.webs
             ctx.load(subsites)
             ctx.execute_query()
+
+            # Debug: Show all available subsites
+            with st.sidebar.expander("Available SharePoint Subsites", expanded=True):
+                subsite_names = [subsite.properties['Title'] for subsite in subsites]
+                if subsite_names:
+                    st.write(", ".join(subsite_names))
+                else:
+                    st.write("No subsites found")
             
             module_hw_design_subsite = None
             for subsite in subsites:
-                if "Module HW Design Validation" in subsite.properties['Title']:
+                # More flexible matching to find the Module HW Design subsite
+                if any(term in subsite.properties['Title'] for term in ["Module HW Design", "Module Hardware", "HW Design", "MDG"]):
                     module_hw_design_subsite = subsite
-                    st.sidebar.success(f"Found Module HW Design Validation subsite: {subsite.properties['Title']}")
+                    st.sidebar.success(f"Found Module HW Design subsite: {subsite.properties['Title']}")
                     break
             
-            # If we found the Module HW Design Validation subsite, try to access its lists
+            # If we found the Module HW Design subsite, try to access its lists
             if module_hw_design_subsite:
                 subsite_ctx = ClientContext(f"{sharepoint_site}{module_hw_design_subsite.properties['ServerRelativeUrl']}", auth_context)
                 subsite_lists = subsite_ctx.web.lists
