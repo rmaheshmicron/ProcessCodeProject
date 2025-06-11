@@ -592,21 +592,85 @@ def get_embedded_sample_data():
 def generate_process_code(seg, form_factor, spd, process_code_df):
     """Generate process code based on segment, form factor, and speed"""
     try:
-        # Filter the dataframe based on the inputs
+        # First try to find an exact match in the dataframe
         filtered_df = process_code_df[
             (process_code_df['Market_Segment'].str.lower() == seg.lower()) & 
             (process_code_df['Form_Factor'].str.lower() == form_factor.lower()) & 
             (process_code_df['Speed'].str.lower() == spd.lower())
         ]
         
-        if filtered_df.empty:
-            return "No matching process code found for the given criteria", None
+        if not filtered_df.empty:
+            # If we found an exact match, use it
+            process_code = filtered_df.iloc[0]['Process_Code']
+            return process_code, filtered_df
         
-        # Get the process code from the filtered dataframe
-        process_code = filtered_df.iloc[0]['Process_Code']
+        # If no exact match, try to find a partial match with just segment and form factor
+        partial_match_df = process_code_df[
+            (process_code_df['Market_Segment'].str.lower() == seg.lower()) & 
+            (process_code_df['Form_Factor'].str.lower() == form_factor.lower())
+        ]
         
-        # Return the process code and the filtered dataframe for display
-        return process_code, filtered_df
+        if not partial_match_df.empty:
+            # If we found a partial match, use it but update the speed part
+            base_process_code = partial_match_df.iloc[0]['Process_Code']
+            
+            # Try to replace the speed part (assuming format like "CL-SODIMM-U8K-ABC")
+            parts = base_process_code.split('-')
+            if len(parts) >= 3:
+                # Determine the speed code format (U8K, O8K, etc.)
+                if 'U8K' in parts[2]:
+                    speed_format = 'U8K'
+                elif 'O8K' in parts[2]:
+                    speed_format = 'O8K'
+                else:
+                    # Default to U8K for higher speeds, O8K for lower speeds
+                    try:
+                        speed_num = int(spd)
+                        speed_format = 'U8K' if speed_num >= 6400 else 'O8K'
+                    except ValueError:
+                        speed_format = 'U8K'  # Default
+                
+                # Replace the speed part
+                parts[2] = speed_format
+                
+                # Reconstruct the process code
+                process_code = '-'.join(parts)
+                return process_code, partial_match_df
+        
+        # If no match at all, generate a new process code from scratch
+        # Format: [SEG]-[FORM_FACTOR]-[SPEED_CODE]-[COMPONENT_CODE]
+        
+        # Determine segment prefix
+        seg_prefix = 'SV' if seg.lower() == 'server' else 'CL' if seg.lower() == 'client' else 'XX'
+        
+        # Determine speed code
+        try:
+            speed_num = int(spd)
+            speed_code = 'U8K' if speed_num >= 6400 else 'O8K'
+        except ValueError:
+            speed_code = 'U8K'  # Default
+        
+        # Generate a component code
+        # For server: 5 characters (PMIC, SPD/Hub, Temp Sensor, RCD, Data Buffer)
+        # For client: 3 characters (PMIC, SPD/Hub, CKD)
+        if seg.lower() == 'server':
+            component_code = 'ABCDE'  # Default server component code
+        else:
+            component_code = 'ABC'    # Default client component code
+        
+        # Construct the process code
+        process_code = f"{seg_prefix}-{form_factor.upper()}-{speed_code}-{component_code}"
+        
+        # Create a synthetic dataframe for display
+        synthetic_data = {
+            'Market_Segment': [seg],
+            'Form_Factor': [form_factor],
+            'Speed': [spd],
+            'Process_Code': [process_code]
+        }
+        synthetic_df = pd.DataFrame(synthetic_data)
+        
+        return process_code, synthetic_df
     
     except Exception as e:
         return f"Error generating process code: {e}", None
