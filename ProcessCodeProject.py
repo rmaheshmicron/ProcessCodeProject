@@ -167,19 +167,19 @@ def load_data_from_sharepoint():
             with st.sidebar.expander("Available SharePoint Lists", expanded=True):
                 st.write(", ".join(available_lists))
                 
-            # Check for Module HW Design subsite
+            # Check for Module HW Design Validation subsite
             subsites = ctx.web.webs
             ctx.load(subsites)
             ctx.execute_query()
             
             module_hw_design_subsite = None
             for subsite in subsites:
-                if "Module HW Design" in subsite.properties['Title']:
+                if "Module HW Design Validation" in subsite.properties['Title']:
                     module_hw_design_subsite = subsite
-                    st.sidebar.success(f"Found Module HW Design subsite: {subsite.properties['Title']}")
+                    st.sidebar.success(f"Found Module HW Design Validation subsite: {subsite.properties['Title']}")
                     break
             
-            # If we found the Module HW Design subsite, try to access its lists
+            # If we found the Module HW Design Validation subsite, try to access its lists
             if module_hw_design_subsite:
                 subsite_ctx = ClientContext(f"{sharepoint_site}{module_hw_design_subsite.properties['ServerRelativeUrl']}", auth_context)
                 subsite_lists = subsite_ctx.web.lists
@@ -316,7 +316,7 @@ def load_data_from_sharepoint():
                     data['module_pcb_reference_df'] = pd.DataFrame()
             else:
                 # If we didn't find the subsite, try to find the lists in the main site
-                st.sidebar.warning("Could not find Module HW Design subsite")
+                st.sidebar.warning("Could not find Module HW Design Validation subsite")
                 
                 # Try to find the lists in the main site
                 hw_validation_list_name = None
