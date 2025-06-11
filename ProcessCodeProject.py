@@ -154,7 +154,7 @@ def load_data_from_sharepoint():
         try:
             # This is the list for both process code and parts data
             # URL: https://microncorp.sharepoint.com/sites/mdg/Lists/Basic%20List/AllItems.aspx
-            hw_validation_list = ctx.web.get_list_by_server_relative_url("/sites/mdg/Lists/Basic List")
+            hw_validation_list = ctx.web.lists.get_by_title("Basic List")
             
             # Create a CAML query to get all items
             caml_query = CamlQuery()
@@ -207,7 +207,7 @@ def load_data_from_sharepoint():
         # Load PCB reference data from "PCB Reference Table" list
         try:
             # URL: https://microncorp.sharepoint.com/sites/mdg/Lists/PCB%20Reference%20Table/Main.aspx
-            pcb_reference_list = ctx.web.get_list_by_server_relative_url("/sites/mdg/Lists/PCB Reference Table")
+            pcb_reference_list = ctx.web.lists.get_by_title("PCB Reference Table")
             
             # Create a CAML query to get all items
             caml_query = CamlQuery()
