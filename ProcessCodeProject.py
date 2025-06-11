@@ -117,7 +117,7 @@ def show_process_code_info():
         
         **D5 Client PROCESS CODE and PROCESS CODE PRINT:** PMIC → SPD/Hub → CKD (if applicable)
         
-        *Note: This view contains only components WITH an assigned PROCESS CODE character. See the "Non-DRAM Component Validations" list on the DMCVAL/ site for a more comprehensive view of component validation status and plans.*
+        *Note: This view contains only components WITH an assigned PROCESS CODE character.
         """)
 
 
@@ -150,10 +150,9 @@ def load_data_from_sharepoint():
         auth_context.acquire_token_for_user(username, password)
         ctx = ClientContext(sharepoint_site, auth_context)
         
-        # Load process code data from "Module HW Design Component Validations" list
+        # Load process code data from "Basic List"
         try:
-            # This is the list for both process code and parts data
-            # URL: https://microncorp.sharepoint.com/sites/mdg/Lists/Basic%20List/AllItems.aspx
+            # URL: https://microncorp.sharepoint.com/:l:/r/sites/mdg/Lists/Basic%20List?e=GJ7RDd
             hw_validation_list = ctx.web.lists.get_by_title("Basic List")
             
             # Create a CAML query to get all items
@@ -206,7 +205,7 @@ def load_data_from_sharepoint():
         
         # Load PCB reference data from "PCB Reference Table" list
         try:
-            # URL: https://microncorp.sharepoint.com/sites/mdg/Lists/PCB%20Reference%20Table/Main.aspx
+            # URL: https://microncorp.sharepoint.com/:l:/r/sites/mdg/Lists/PCB%20Reference%20Table?e=qf6AnB
             pcb_reference_list = ctx.web.lists.get_by_title("PCB Reference Table")
             
             # Create a CAML query to get all items
