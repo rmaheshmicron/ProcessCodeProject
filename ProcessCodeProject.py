@@ -142,7 +142,7 @@ def load_data_from_sharepoint():
     # Check if we have the required SharePoint credentials
     if not (username and password):
         st.sidebar.warning("Please provide SharePoint credentials to load data.")
-        return None
+        return get_embedded_sample_data()
     
     try:
         # Connect to SharePoint
@@ -167,7 +167,7 @@ def load_data_from_sharepoint():
             with st.sidebar.expander("Available SharePoint Lists", expanded=True):
                 st.write(", ".join(available_lists))
                 
-            # Check for Module HW Design subsite
+            # Check for all subsites
             subsites = ctx.web.webs
             ctx.load(subsites)
             ctx.execute_query()
@@ -180,62 +180,50 @@ def load_data_from_sharepoint():
                 else:
                     st.write("No subsites found")
             
-            module_hw_design_subsite = None
-            for subsite in subsites:
-                # More flexible matching to find the Module HW Design subsite
-                if any(term in subsite.properties['Title'] for term in ["Module HW Design", "Module Hardware", "HW Design", "MDG"]):
-                    module_hw_design_subsite = subsite
-                    st.sidebar.success(f"Found Module HW Design subsite: {subsite.properties['Title']}")
+            # Try to find any relevant lists in the main site first
+            hw_validation_list_name = None
+            for list_name in ["Non-DRAM Component Validations", "Component Validations", "HW Validation", 
+                             "Basic List", "Components", "Parts", "Validations", "Hardware"]:
+                if any(list_name.lower() in list_title.lower() for list_title in available_lists):
+                    matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
+                    hw_validation_list_name = matching_lists[0]  # Take the first matching list
                     break
             
-            # If we found the Module HW Design subsite, try to access its lists
-            if module_hw_design_subsite:
-                subsite_ctx = ClientContext(f"{sharepoint_site}{module_hw_design_subsite.properties['ServerRelativeUrl']}", auth_context)
-                subsite_lists = subsite_ctx.web.lists
-                subsite_ctx.load(subsite_lists)
-                subsite_ctx.execute_query()
+            if hw_validation_list_name:
+                st.sidebar.success(f"Found HW validation list in main site: {hw_validation_list_name}")
+                hw_validation_list = ctx.web.lists.get_by_title(hw_validation_list_name)
                 
-                subsite_available_lists = [list_obj.properties['Title'] for list_obj in subsite_lists]
-                with st.sidebar.expander(f"Lists in {module_hw_design_subsite.properties['Title']} subsite", expanded=True):
-                    st.write(", ".join(subsite_available_lists))
+                # Create a CAML query to get all items
+                caml_query = CamlQuery()
+                caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
                 
-                # Try to find the Non-DRAM Component Validations list in the subsite
-                hw_validation_list_name = None
-                for list_name in ["Non-DRAM Component Validations", "Component Validations", "HW Validation"]:
-                    if list_name in subsite_available_lists:
-                        hw_validation_list_name = list_name
-                        break
+                # Execute the query
+                items = hw_validation_list.get_items(caml_query)
+                ctx.load(items)
+                ctx.execute_query()
                 
-                if hw_validation_list_name:
-                    st.sidebar.success(f"Found HW validation list: {hw_validation_list_name}")
-                    hw_validation_list = subsite_ctx.web.lists.get_by_title(hw_validation_list_name)
-                    
-                    # Create a CAML query to get all items
-                    caml_query = CamlQuery()
-                    caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-                    
-                    # Execute the query
-                    items = hw_validation_list.get_items(caml_query)
-                    subsite_ctx.load(items)
-                    subsite_ctx.execute_query()
-                    
-                    # Convert to DataFrame for process code data
-                    process_code_data = []
-                    parts_data = []
+                # Convert to DataFrame for process code data
+                process_code_data = []
+                parts_data = []
+                
+                if items.count > 0:
+                    # For debugging, print the first item's properties
+                    with st.sidebar.expander(f"Sample {hw_validation_list_name} Item Fields", expanded=True):
+                        st.write(", ".join(items[0].properties.keys()))
                     
                     for item in items:
                         item_properties = item.properties
                         
-                        # For debugging, print the first item's properties
-                        if len(process_code_data) == 0 and len(parts_data) == 0:
-                            with st.sidebar.expander(f"Sample {hw_validation_list_name} Item Fields", expanded=True):
-                                st.write(", ".join(item_properties.keys()))
-                        
                         # Extract process code data - adjust field names if needed
-                        market_segment_field = next((f for f in ['Market_Segment', 'MarketSegment', 'Segment', 'Title'] if f in item_properties), None)
-                        form_factor_field = next((f for f in ['Form_Factor', 'FormFactor', 'Form Factor'] if f in item_properties), None)
-                        speed_field = next((f for f in ['Speed', 'SPD', 'SpeedBin'] if f in item_properties), None)
-                        process_code_field = next((f for f in ['Process_Code', 'ProcessCode', 'Process Code'] if f in item_properties), None)
+                        # Look for any field that might contain segment, form factor, speed, or process code
+                        market_segment_field = next((f for f in item_properties.keys() 
+                                                  if any(term in f.lower() for term in ['segment', 'market', 'seg', 'title'])), None)
+                        form_factor_field = next((f for f in item_properties.keys() 
+                                               if any(term in f.lower() for term in ['form', 'factor', 'ff'])), None)
+                        speed_field = next((f for f in item_properties.keys() 
+                                         if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
+                        process_code_field = next((f for f in item_properties.keys() 
+                                                if any(term in f.lower() for term in ['process', 'code', 'pc'])), None)
                         
                         if market_segment_field and form_factor_field and speed_field and process_code_field:
                             process_code_data.append({
@@ -246,212 +234,257 @@ def load_data_from_sharepoint():
                             })
                         
                         # Extract parts data - adjust field names if needed
-                        mpn_field = next((f for f in ['MPN', 'PartNumber', 'Part Number'] if f in item_properties), None)
-                        component_type_field = next((f for f in ['Component_Type', 'ComponentType', 'Component Type'] if f in item_properties), None)
-                        validation_status_field = next((f for f in ['Validation_Status', 'ValidationStatus', 'Status'] if f in item_properties), None)
+                        mpn_field = next((f for f in item_properties.keys() 
+                                       if any(term in f.lower() for term in ['mpn', 'part', 'number'])), None)
+                        component_type_field = next((f for f in item_properties.keys() 
+                                                  if any(term in f.lower() for term in ['component', 'type', 'comp'])), None)
+                        validation_status_field = next((f for f in item_properties.keys() 
+                                                     if any(term in f.lower() for term in ['validation', 'status', 'val'])), None)
                         
-                        if mpn_field and process_code_field and component_type_field:
+                        if mpn_field and process_code_field:
                             parts_data.append({
                                 'MPN': item_properties.get(mpn_field, ''),
                                 'Process_Code': item_properties.get(process_code_field, ''),
-                                'Component_Type': item_properties.get(component_type_field, ''),
-                                'Validation_Status': item_properties.get(validation_status_field, '') if validation_status_field else ''
+                                'Component_Type': item_properties.get(component_type_field, '') if component_type_field else 'Unknown',
+                                'Validation_Status': item_properties.get(validation_status_field, '') if validation_status_field else 'Unknown'
                             })
-                    
-                    process_code_df = pd.DataFrame(process_code_data)
-                    data['process_code_df'] = process_code_df
-                    
-                    parts_df = pd.DataFrame(parts_data)
-                    data['parts_df'] = parts_df
-                    data['module_hw_validation_df'] = parts_df.copy()
-                    
-                    st.sidebar.success(f"Successfully loaded {len(process_code_data)} process codes and {len(parts_data)} parts from SharePoint")
-                else:
-                    st.sidebar.warning("Could not find HW validation list in the subsite")
-                    data['process_code_df'] = pd.DataFrame()
-                    data['parts_df'] = pd.DataFrame()
-                    data['module_hw_validation_df'] = pd.DataFrame()
                 
-                # Try to find the DRAM Module Validations list in the subsite
-                pcb_reference_list_name = None
-                for list_name in ["DRAM Module Validations (WIP)", "Module Validations", "PCB Reference"]:
-                    if list_name in subsite_available_lists:
-                        pcb_reference_list_name = list_name
-                        break
+                process_code_df = pd.DataFrame(process_code_data)
+                data['process_code_df'] = process_code_df
                 
-                if pcb_reference_list_name:
-                    st.sidebar.success(f"Found PCB reference list: {pcb_reference_list_name}")
-                    pcb_reference_list = subsite_ctx.web.lists.get_by_title(pcb_reference_list_name)
-                    
-                    # Create a CAML query to get all items
-                    caml_query = CamlQuery()
-                    caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-                    
-                    # Execute the query
-                    items = pcb_reference_list.get_items(caml_query)
-                    subsite_ctx.load(items)
-                    subsite_ctx.execute_query()
-                    
-                    # For debugging, print the first item's properties
-                    if items.count > 0:
-                        with st.sidebar.expander(f"Sample {pcb_reference_list_name} Item Fields", expanded=True):
-                            st.write(", ".join(items[0].properties.keys()))
-                    
-                    # Convert to DataFrame - adjust field names if needed
-                    pcb_reference_data = []
-                    for item in items:
-                        item_properties = item.properties
-                        
-                        process_code_field = next((f for f in ['Process_Code', 'ProcessCode', 'Process Code'] if f in item_properties), None)
-                        pcb_reference_field = next((f for f in ['PCB_Reference', 'PCBReference', 'PCB Reference', 'PCB'] if f in item_properties), None)
-                        
-                        if process_code_field and pcb_reference_field:
-                            pcb_reference_data.append({
-                                'Process_Code': item_properties.get(process_code_field, ''),
-                                'PCB_Reference': item_properties.get(pcb_reference_field, '')
-                            })
-                        elif process_code_field:  # If we only have process code but not PCB reference
-                            pcb_reference_data.append({
-                                'Process_Code': item_properties.get(process_code_field, ''),
-                                'PCB_Reference': 'PCB-' + item_properties.get(process_code_field, '')  # Create a default PCB reference
-                            })
-                    
-                    pcb_reference_df = pd.DataFrame(pcb_reference_data)
-                    data['module_pcb_reference_df'] = pcb_reference_df
-                    
-                    st.sidebar.success(f"Successfully loaded {len(pcb_reference_data)} PCB references from SharePoint")
-                else:
-                    st.sidebar.warning("Could not find PCB reference list in the subsite")
-                    data['module_pcb_reference_df'] = pd.DataFrame()
+                parts_df = pd.DataFrame(parts_data)
+                data['parts_df'] = parts_df
+                data['module_hw_validation_df'] = parts_df.copy()
+                
+                st.sidebar.success(f"Successfully loaded {len(process_code_data)} process codes and {len(parts_data)} parts from SharePoint")
             else:
-                # If we didn't find the subsite, try to find the lists in the main site
-                st.sidebar.warning("Could not find Module HW Design Validation subsite")
+                st.sidebar.warning("Could not find HW validation list in the main site")
                 
-                # Try to find the lists in the main site
-                hw_validation_list_name = None
-                for list_name in ["Non-DRAM Component Validations", "Component Validations", "HW Validation", "Basic List"]:
-                    if list_name in available_lists:
-                        hw_validation_list_name = list_name
+                # Try to search in all subsites
+                found_data = False
+                for subsite in subsites:
+                    if found_data:
                         break
+                        
+                    subsite_ctx = ClientContext(f"{sharepoint_site}{subsite.properties['ServerRelativeUrl']}", auth_context)
+                    try:
+                        subsite_lists = subsite_ctx.web.lists
+                        subsite_ctx.load(subsite_lists)
+                        subsite_ctx.execute_query()
+                        
+                        subsite_available_lists = [list_obj.properties['Title'] for list_obj in subsite_lists]
+                        with st.sidebar.expander(f"Lists in {subsite.properties['Title']} subsite", expanded=True):
+                            st.write(", ".join(subsite_available_lists))
+                        
+                        # Try to find any relevant list in this subsite
+                        for list_name in ["Non-DRAM Component Validations", "Component Validations", "HW Validation", 
+                                         "Basic List", "Components", "Parts", "Validations", "Hardware"]:
+                            if any(list_name.lower() in list_title.lower() for list_title in subsite_available_lists):
+                                matching_lists = [list_title for list_title in subsite_available_lists 
+                                                if list_name.lower() in list_title.lower()]
+                                hw_validation_list_name = matching_lists[0]  # Take the first matching list
+                                
+                                st.sidebar.success(f"Found HW validation list in {subsite.properties['Title']} subsite: {hw_validation_list_name}")
+                                hw_validation_list = subsite_ctx.web.lists.get_by_title(hw_validation_list_name)
+                                
+                                # Create a CAML query to get all items
+                                caml_query = CamlQuery()
+                                caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
+                                
+                                # Execute the query
+                                items = hw_validation_list.get_items(caml_query)
+                                subsite_ctx.load(items)
+                                subsite_ctx.execute_query()
+                                
+                                # Convert to DataFrame for process code data
+                                process_code_data = []
+                                parts_data = []
+                                
+                                if items.count > 0:
+                                    # For debugging, print the first item's properties
+                                    with st.sidebar.expander(f"Sample {hw_validation_list_name} Item Fields", expanded=True):
+                                        st.write(", ".join(items[0].properties.keys()))
+                                    
+                                    for item in items:
+                                        item_properties = item.properties
+                                        
+                                        # Extract process code data - adjust field names if needed
+                                        # Look for any field that might contain segment, form factor, speed, or process code
+                                        market_segment_field = next((f for f in item_properties.keys() 
+                                                                  if any(term in f.lower() for term in ['segment', 'market', 'seg', 'title'])), None)
+                                        form_factor_field = next((f for f in item_properties.keys() 
+                                                               if any(term in f.lower() for term in ['form', 'factor', 'ff'])), None)
+                                        speed_field = next((f for f in item_properties.keys() 
+                                                         if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
+                                        process_code_field = next((f for f in item_properties.keys() 
+                                                                if any(term in f.lower() for term in ['process', 'code', 'pc'])), None)
+                                        
+                                        if market_segment_field and form_factor_field and speed_field and process_code_field:
+                                            process_code_data.append({
+                                                'Market_Segment': item_properties.get(market_segment_field, ''),
+                                                'Form_Factor': item_properties.get(form_factor_field, ''),
+                                                'Speed': item_properties.get(speed_field, ''),
+                                                'Process_Code': item_properties.get(process_code_field, '')
+                                            })
+                                        
+                                        # Extract parts data - adjust field names if needed
+                                        mpn_field = next((f for f in item_properties.keys() 
+                                                       if any(term in f.lower() for term in ['mpn', 'part', 'number'])), None)
+                                        component_type_field = next((f for f in item_properties.keys() 
+                                                                  if any(term in f.lower() for term in ['component', 'type', 'comp'])), None)
+                                        validation_status_field = next((f for f in item_properties.keys() 
+                                                                     if any(term in f.lower() for term in ['validation', 'status', 'val'])), None)
+                                        
+                                        if mpn_field and process_code_field:
+                                            parts_data.append({
+                                                'MPN': item_properties.get(mpn_field, ''),
+                                                'Process_Code': item_properties.get(process_code_field, ''),
+                                                'Component_Type': item_properties.get(component_type_field, '') if component_type_field else 'Unknown',
+                                                'Validation_Status': item_properties.get(validation_status_field, '') if validation_status_field else 'Unknown'
+                                            })
+                                
+                                process_code_df = pd.DataFrame(process_code_data)
+                                data['process_code_df'] = process_code_df
+                                
+                                parts_df = pd.DataFrame(parts_data)
+                                data['parts_df'] = parts_df
+                                data['module_hw_validation_df'] = parts_df.copy()
+                                
+                                st.sidebar.success(f"Successfully loaded {len(process_code_data)} process codes and {len(parts_data)} parts from SharePoint")
+                                found_data = True
+                                break
+                    except Exception as e:
+                        st.sidebar.warning(f"Error accessing {subsite.properties['Title']} subsite: {e}")
                 
-                if hw_validation_list_name:
-                    st.sidebar.success(f"Found HW validation list in main site: {hw_validation_list_name}")
-                    hw_validation_list = ctx.web.lists.get_by_title(hw_validation_list_name)
-                    
-                    # Create a CAML query to get all items
-                    caml_query = CamlQuery()
-                    caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-                    
-                    # Execute the query
-                    items = hw_validation_list.get_items(caml_query)
-                    ctx.load(items)
-                    ctx.execute_query()
-                    
-                    # Convert to DataFrame for process code data
-                    process_code_data = []
-                    parts_data = []
-                    
-                    for item in items:
-                        item_properties = item.properties
-                        
-                        # For debugging, print the first item's properties
-                        if len(process_code_data) == 0 and len(parts_data) == 0:
-                            with st.sidebar.expander(f"Sample {hw_validation_list_name} Item Fields", expanded=True):
-                                st.write(", ".join(item_properties.keys()))
-                        
-                        # Extract process code data - adjust field names if needed
-                        market_segment_field = next((f for f in ['Market_Segment', 'MarketSegment', 'Segment', 'Title'] if f in item_properties), None)
-                        form_factor_field = next((f for f in ['Form_Factor', 'FormFactor', 'Form Factor'] if f in item_properties), None)
-                        speed_field = next((f for f in ['Speed', 'SPD', 'SpeedBin'] if f in item_properties), None)
-                        process_code_field = next((f for f in ['Process_Code', 'ProcessCode', 'Process Code'] if f in item_properties), None)
-                        
-                        if market_segment_field and form_factor_field and speed_field and process_code_field:
-                            process_code_data.append({
-                                'Market_Segment': item_properties.get(market_segment_field, ''),
-                                'Form_Factor': item_properties.get(form_factor_field, ''),
-                                'Speed': item_properties.get(speed_field, ''),
-                                'Process_Code': item_properties.get(process_code_field, '')
-                            })
-                        
-                        # Extract parts data - adjust field names if needed
-                        mpn_field = next((f for f in ['MPN', 'PartNumber', 'Part Number'] if f in item_properties), None)
-                        component_type_field = next((f for f in ['Component_Type', 'ComponentType', 'Component Type'] if f in item_properties), None)
-                        validation_status_field = next((f for f in ['Validation_Status', 'ValidationStatus', 'Status'] if f in item_properties), None)
-                        
-                        if mpn_field and process_code_field and component_type_field:
-                            parts_data.append({
-                                'MPN': item_properties.get(mpn_field, ''),
-                                'Process_Code': item_properties.get(process_code_field, ''),
-                                'Component_Type': item_properties.get(component_type_field, ''),
-                                'Validation_Status': item_properties.get(validation_status_field, '') if validation_status_field else ''
-                            })
-                    
-                    process_code_df = pd.DataFrame(process_code_data)
-                    data['process_code_df'] = process_code_df
-                    
-                    parts_df = pd.DataFrame(parts_data)
-                    data['parts_df'] = parts_df
-                    data['module_hw_validation_df'] = parts_df.copy()
-                    
-                    st.sidebar.success(f"Successfully loaded {len(process_code_data)} process codes and {len(parts_data)} parts from SharePoint")
-                else:
-                    st.sidebar.warning("Could not find HW validation list in the main site")
+                if not found_data:
+                    st.sidebar.warning("Could not find HW validation data in any subsite")
                     data['process_code_df'] = pd.DataFrame()
                     data['parts_df'] = pd.DataFrame()
                     data['module_hw_validation_df'] = pd.DataFrame()
+            
+            # Try to find PCB reference list in main site
+            pcb_reference_list_name = None
+            for list_name in ["DRAM Module Validations", "Module Validations", "PCB Reference", "PCB Reference Table", 
+                             "PCB", "Module", "DRAM"]:
+                if any(list_name.lower() in list_title.lower() for list_title in available_lists):
+                    matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
+                    pcb_reference_list_name = matching_lists[0]  # Take the first matching list
+                    break
+            
+            if pcb_reference_list_name:
+                st.sidebar.success(f"Found PCB reference list in main site: {pcb_reference_list_name}")
+                pcb_reference_list = ctx.web.lists.get_by_title(pcb_reference_list_name)
                 
-                pcb_reference_list_name = None
-                for list_name in ["DRAM Module Validations (WIP)", "Module Validations", "PCB Reference", "PCB Reference Table"]:
-                    if list_name in available_lists:
-                        pcb_reference_list_name = list_name
+                # Create a CAML query to get all items
+                caml_query = CamlQuery()
+                caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
+                
+                # Execute the query
+                items = pcb_reference_list.get_items(caml_query)
+                ctx.load(items)
+                ctx.execute_query()
+                
+                # For debugging, print the first item's properties
+                if items.count > 0:
+                    with st.sidebar.expander(f"Sample {pcb_reference_list_name} Item Fields", expanded=True):
+                        st.write(", ".join(items[0].properties.keys()))
+                
+                # Convert to DataFrame - adjust field names if needed
+                pcb_reference_data = []
+                for item in items:
+                    item_properties = item.properties
+                    
+                    # Look for any field that might contain process code or PCB reference
+                    process_code_field = next((f for f in item_properties.keys() 
+                                            if any(term in f.lower() for term in ['process', 'code', 'pc'])), None)
+                    pcb_reference_field = next((f for f in item_properties.keys() 
+                                             if any(term in f.lower() for term in ['pcb', 'reference', 'ref'])), None)
+                    
+                    if process_code_field:
+                        pcb_reference_data.append({
+                            'Process_Code': item_properties.get(process_code_field, ''),
+                            'PCB_Reference': item_properties.get(pcb_reference_field, '') if pcb_reference_field else 'PCB-' + item_properties.get(process_code_field, '')
+                        })
+                
+                pcb_reference_df = pd.DataFrame(pcb_reference_data)
+                data['module_pcb_reference_df'] = pcb_reference_df
+                
+                st.sidebar.success(f"Successfully loaded {len(pcb_reference_data)} PCB references from SharePoint")
+            else:
+                st.sidebar.warning("Could not find PCB reference list in the main site")
+                
+                # Try to search in all subsites for PCB reference data
+                found_pcb_data = False
+                for subsite in subsites:
+                    if found_pcb_data:
                         break
+                        
+                    subsite_ctx = ClientContext(f"{sharepoint_site}{subsite.properties['ServerRelativeUrl']}", auth_context)
+                    try:
+                        subsite_lists = subsite_ctx.web.lists
+                        subsite_ctx.load(subsite_lists)
+                        subsite_ctx.execute_query()
+                        
+                        subsite_available_lists = [list_obj.properties['Title'] for list_obj in subsite_lists]
+                        
+                        # Try to find any relevant list in this subsite
+                        for list_name in ["DRAM Module Validations", "Module Validations", "PCB Reference", 
+                                         "PCB Reference Table", "PCB", "Module", "DRAM"]:
+                            if any(list_name.lower() in list_title.lower() for list_title in subsite_available_lists):
+                                matching_lists = [list_title for list_title in subsite_available_lists 
+                                                if list_name.lower() in list_title.lower()]
+                                pcb_reference_list_name = matching_lists[0]  # Take the first matching list
+                                
+                                st.sidebar.success(f"Found PCB reference list in {subsite.properties['Title']} subsite: {pcb_reference_list_name}")
+                                pcb_reference_list = subsite_ctx.web.lists.get_by_title(pcb_reference_list_name)
+                                
+                                # Create a CAML query to get all items
+                                caml_query = CamlQuery()
+                                caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
+                                
+                                # Execute the query
+                                items = pcb_reference_list.get_items(caml_query)
+                                subsite_ctx.load(items)
+                                subsite_ctx.execute_query()
+                                
+                                # For debugging, print the first item's properties
+                                if items.count > 0:
+                                    with st.sidebar.expander(f"Sample {pcb_reference_list_name} Item Fields", expanded=True):
+                                        st.write(", ".join(items[0].properties.keys()))
+                                
+                                # Convert to DataFrame - adjust field names if needed
+                                pcb_reference_data = []
+                                for item in items:
+                                    item_properties = item.properties
+                                    
+                                    # Look for any field that might contain process code or PCB reference
+                                    process_code_field = next((f for f in item_properties.keys() 
+                                                            if any(term in f.lower() for term in ['process', 'code', 'pc'])), None)
+                                    pcb_reference_field = next((f for f in item_properties.keys() 
+                                                             if any(term in f.lower() for term in ['pcb', 'reference', 'ref'])), None)
+                                    
+                                    if process_code_field:
+                                        pcb_reference_data.append({
+                                            'Process_Code': item_properties.get(process_code_field, ''),
+                                            'PCB_Reference': item_properties.get(pcb_reference_field, '') if pcb_reference_field else 'PCB-' + item_properties.get(process_code_field, '')
+                                        })
+                                
+                                pcb_reference_df = pd.DataFrame(pcb_reference_data)
+                                data['module_pcb_reference_df'] = pcb_reference_df
+                                
+                                st.sidebar.success(f"Successfully loaded {len(pcb_reference_data)} PCB references from SharePoint")
+                                found_pcb_data = True
+                                break
+                    except Exception as e:
+                        st.sidebar.warning(f"Error accessing {subsite.properties['Title']} subsite for PCB data: {e}")
                 
-                if pcb_reference_list_name:
-                    st.sidebar.success(f"Found PCB reference list in main site: {pcb_reference_list_name}")
-                    pcb_reference_list = ctx.web.lists.get_by_title(pcb_reference_list_name)
-                    
-                    # Create a CAML query to get all items
-                    caml_query = CamlQuery()
-                    caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-                    
-                    # Execute the query
-                    items = pcb_reference_list.get_items(caml_query)
-                    ctx.load(items)
-                    ctx.execute_query()
-                    
-                    # For debugging, print the first item's properties
-                    if items.count > 0:
-                        with st.sidebar.expander(f"Sample {pcb_reference_list_name} Item Fields", expanded=True):
-                            st.write(", ".join(items[0].properties.keys()))
-                    
-                    # Convert to DataFrame - adjust field names if needed
-                    pcb_reference_data = []
-                    for item in items:
-                        item_properties = item.properties
-                        
-                        process_code_field = next((f for f in ['Process_Code', 'ProcessCode', 'Process Code'] if f in item_properties), None)
-                        pcb_reference_field = next((f for f in ['PCB_Reference', 'PCBReference', 'PCB Reference', 'PCB'] if f in item_properties), None)
-                        
-                        if process_code_field and pcb_reference_field:
-                            pcb_reference_data.append({
-                                'Process_Code': item_properties.get(process_code_field, ''),
-                                'PCB_Reference': item_properties.get(pcb_reference_field, '')
-                            })
-                        elif process_code_field:  # If we only have process code but not PCB reference
-                            pcb_reference_data.append({
-                                'Process_Code': item_properties.get(process_code_field, ''),
-                                'PCB_Reference': 'PCB-' + item_properties.get(process_code_field, '')  # Create a default PCB reference
-                            })
-                    
-                    pcb_reference_df = pd.DataFrame(pcb_reference_data)
-                    data['module_pcb_reference_df'] = pcb_reference_df
-                    
-                    st.sidebar.success(f"Successfully loaded {len(pcb_reference_data)} PCB references from SharePoint")
-                else:
-                    st.sidebar.warning("Could not find PCB reference list in the main site")
+                if not found_pcb_data:
+                    st.sidebar.warning("Could not find PCB reference data in any subsite")
                     data['module_pcb_reference_df'] = pd.DataFrame()
+                
         except Exception as e:
             st.sidebar.error(f"Error connecting to SharePoint: {e}")
+            st.sidebar.info("Using embedded sample data as fallback")
             return get_embedded_sample_data()
     
     except Exception as e:
