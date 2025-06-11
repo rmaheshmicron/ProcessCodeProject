@@ -206,7 +206,7 @@ def load_data_from_sharepoint():
                 process_code_data = []
                 parts_data = []
                 
-                if items.count > 0:
+                if len(items) > 0:
                     # For debugging, print the first item's properties
                     with st.sidebar.expander(f"Sample {hw_validation_list_name} Item Fields", expanded=True):
                         st.write(", ".join(items[0].properties.keys()))
@@ -300,7 +300,7 @@ def load_data_from_sharepoint():
                                 process_code_data = []
                                 parts_data = []
                                 
-                                if items.count > 0:
+                                if len(items) > 0:
                                     # For debugging, print the first item's properties
                                     with st.sidebar.expander(f"Sample {hw_validation_list_name} Item Fields", expanded=True):
                                         st.write(", ".join(items[0].properties.keys()))
@@ -385,7 +385,7 @@ def load_data_from_sharepoint():
                 ctx.execute_query()
                 
                 # For debugging, print the first item's properties
-                if items.count > 0:
+                if len(items) > 0:
                     with st.sidebar.expander(f"Sample {pcb_reference_list_name} Item Fields", expanded=True):
                         st.write(", ".join(items[0].properties.keys()))
                 
@@ -448,7 +448,7 @@ def load_data_from_sharepoint():
                                 subsite_ctx.execute_query()
                                 
                                 # For debugging, print the first item's properties
-                                if items.count > 0:
+                                if len(items) > 0:
                                     with st.sidebar.expander(f"Sample {pcb_reference_list_name} Item Fields", expanded=True):
                                         st.write(", ".join(items[0].properties.keys()))
                                 
