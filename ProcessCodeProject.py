@@ -4,9 +4,9 @@ import re
 import os
 from pathlib import Path
 import tempfile
-from office365.runtime.auth.authentication_context import AuthenticationContext
-from office365.sharepoint.client_context import ClientContext
-from office365.sharepoint.listitems.caml.query import CamlQuery
+import msal
+import requests
+from urllib.parse import urlparse, quote
 
 class PartSpecification:
     def __init__(self):
@@ -146,11 +146,19 @@ def show_process_code_info():
 
 @st.cache_data(ttl=3600)  # Cache data for 1 hour
 def load_data_from_sharepoint():
-    """Load data directly from SharePoint lists"""
-    data = {}
+    """Load data directly from SharePoint lists using MSAL authentication"""
+    data = {
+        'component_validations_df': pd.DataFrame(),
+        'module_validation_df': pd.DataFrame()
+    }
     
     # SharePoint connection settings
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
+    
+    # Parse the SharePoint URL to get the tenant and site
+    parsed_url = urlparse(sharepoint_site)
+    tenant = parsed_url.netloc.split('.')[0]
+    site_path = parsed_url.path
     
     # Get credentials from secrets or sidebar inputs
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
@@ -159,195 +167,220 @@ def load_data_from_sharepoint():
     else:
         # For security, in a real application you should use Streamlit secrets
         # instead of collecting credentials in the UI
+        st.sidebar.subheader("SharePoint Authentication")
         username = st.sidebar.text_input("SharePoint Username (include @micron.com)", key="sp_username")
         password = st.sidebar.text_input("SharePoint Password", type="password", key="sp_password")
     
-    # Check if we have the required SharePoint credentials
+    # Check if we have the required credentials
     if not (username and password):
         st.sidebar.warning("Please provide SharePoint credentials to load data.")
-        return None
+        return data
     
     try:
-        # Connect to SharePoint
-        auth_context = AuthenticationContext(sharepoint_site)
-        auth_context.acquire_token_for_user(username, password)
-        ctx = ClientContext(sharepoint_site, auth_context)
+        # Set up MSAL authentication
+        authority = "https://login.microsoftonline.com/common"
+        scope = [f"https://{tenant}.sharepoint.com/.default"]
         
-        # First, let's verify the connection and get available lists
-        try:
-            web = ctx.web
-            ctx.load(web)
-            ctx.execute_query()
+        # Client ID for Microsoft Office (this is a well-known client ID for Office applications)
+        client_id = "1fec8e78-bce4-4aaf-ab1b-5451cc387264"  # Microsoft Office client ID
+        
+        # Create the MSAL app
+        app = msal.PublicClientApplication(
+            client_id=client_id,
+            authority=authority
+        )
+        
+        # Acquire token using username/password flow
+        result = app.acquire_token_by_username_password(
+            username=username,
+            password=password,
+            scopes=scope
+        )
+        
+        if "access_token" not in result:
+            st.sidebar.error(f"Authentication failed: {result.get('error_description', 'Unknown error')}")
+            return data
+        
+        access_token = result["access_token"]
+        
+        # Set up headers for SharePoint REST API calls
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json;odata=verbose",
+            "Content-Type": "application/json;odata=verbose"
+        }
+        
+        # Get SharePoint site ID
+        site_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')"
+        response = requests.get(site_url, headers=headers)
+        
+        if response.status_code != 200:
+            st.sidebar.error(f"Error accessing SharePoint site: {response.status_code}")
+            return data
+        
+        site_info = response.json()
+        site_id = site_info['d']['Id']
+        
+        st.sidebar.success(f"Connected to SharePoint site: {site_info['d']['Title']}")
+        
+        # Get all lists in the site
+        lists_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists"
+        response = requests.get(lists_url, headers=headers)
+        
+        if response.status_code != 200:
+            st.sidebar.error(f"Error getting SharePoint lists: {response.status_code}")
+            return data
+        
+        lists_info = response.json()
+        available_lists = [list_item['Title'] for list_item in lists_info['d']['results']]
+        
+        # For debugging, show available lists in the sidebar
+        with st.sidebar.expander("Available SharePoint Lists", expanded=False):
+            st.write(", ".join(available_lists))
+        
+        # Try to find Module HW Design Component Validations list
+        component_validations_list_name = None
+        for list_name in ["Module HW Design Component Validations", "Component Validations", "HW Validation", 
+                         "Components", "Parts", "Validations", "Hardware"]:
+            if any(list_name.lower() in list_title.lower() for list_title in available_lists):
+                matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
+                component_validations_list_name = matching_lists[0]  # Take the first matching list
+                break
+        
+        if component_validations_list_name:
+            st.sidebar.success(f"Found Component Validations list: {component_validations_list_name}")
             
-            # Get all lists to help with debugging
-            lists = ctx.web.lists
-            ctx.load(lists)
-            ctx.execute_query()
-            available_lists = [list_obj.properties['Title'] for list_obj in lists]
-            st.sidebar.success(f"Connected to SharePoint site: {web.properties['Title']}")
+            # Get list items using REST API
+            list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(component_validations_list_name)}')/items?$top=5000"
+            response = requests.get(list_items_url, headers=headers)
             
-            # For debugging, show available lists in the sidebar
-            with st.sidebar.expander("Available SharePoint Lists", expanded=False):
-                st.write(", ".join(available_lists))
+            if response.status_code != 200:
+                st.sidebar.error(f"Error getting list items: {response.status_code}")
+                return data
             
-            # Try to find Module HW Design Component Validations list
-            component_validations_list_name = None
-            for list_name in ["Module HW Design Component Validations", "Component Validations", "HW Validation", 
-                             "Components", "Parts", "Validations", "Hardware"]:
-                if any(list_name.lower() in list_title.lower() for list_title in available_lists):
-                    matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
-                    component_validations_list_name = matching_lists[0]  # Take the first matching list
-                    break
+            items_info = response.json()
+            items = items_info['d']['results']
             
-            if component_validations_list_name:
-                st.sidebar.success(f"Found Component Validations list: {component_validations_list_name}")
-                component_validations_list = ctx.web.lists.get_by_title(component_validations_list_name)
+            # Convert to DataFrame for component validations data
+            component_validations_data = []
+            
+            if len(items) > 0:
+                # For debugging, print the first item's properties
+                with st.sidebar.expander(f"Sample {component_validations_list_name} Item Fields", expanded=False):
+                    st.write(", ".join(items[0].keys()))
                 
-                # Create a CAML query to get all items
-                caml_query = CamlQuery()
-                caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-                
-                # Execute the query
-                items = component_validations_list.get_items(caml_query)
-                ctx.load(items)
-                ctx.execute_query()
-                
-                # Convert to DataFrame for component validations data
-                component_validations_data = []
-                
-                if len(items) > 0:
-                    # For debugging, print the first item's properties
-                    with st.sidebar.expander(f"Sample {component_validations_list_name} Item Fields", expanded=False):
-                        st.write(", ".join(items[0].properties.keys()))
+                for item in items:
+                    # Extract component validation data - adjust field names if needed
+                    # Look for fields that might contain the required information
+                    segment_field = next((f for f in item.keys() 
+                                       if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
+                    supplier_field = next((f for f in item.keys() 
+                                        if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None)
+                    component_gen_field = next((f for f in item.keys() 
+                                             if any(term in f.lower() for term in ['generation', 'gen', 'component gen'])), None)
+                    revision_field = next((f for f in item.keys() 
+                                        if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None)
+                    component_type_field = next((f for f in item.keys() 
+                                              if any(term in f.lower() for term in ['component type', 'type', 'comp type'])), None)
+                    process_code_field = next((f for f in item.keys() 
+                                            if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
+                    mpn_field = next((f for f in item.keys() 
+                                   if any(term in f.lower() for term in ['mpn', 'part number', 'part'])), None)
                     
-                    for item in items:
-                        item_properties = item.properties
-                        
-                        # Extract component validation data - adjust field names if needed
-                        # Look for fields that might contain the required information
-                        segment_field = next((f for f in item_properties.keys() 
-                                           if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
-                        supplier_field = next((f for f in item_properties.keys() 
-                                            if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None)
-                        component_gen_field = next((f for f in item_properties.keys() 
-                                                 if any(term in f.lower() for term in ['generation', 'gen', 'component gen'])), None)
-                        revision_field = next((f for f in item_properties.keys() 
-                                            if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None)
-                        component_type_field = next((f for f in item_properties.keys() 
-                                                  if any(term in f.lower() for term in ['component type', 'type', 'comp type'])), None)
-                        process_code_field = next((f for f in item_properties.keys() 
-                                                if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
-                        mpn_field = next((f for f in item_properties.keys() 
-                                       if any(term in f.lower() for term in ['mpn', 'part number', 'part'])), None)
-                        
-                        # Only add if we have the minimum required fields
-                        if segment_field and supplier_field and component_gen_field and revision_field and component_type_field and process_code_field:
-                            component_validations_data.append({
-                                'Segment': str(item_properties.get(segment_field, '')),
-                                'Supplier': str(item_properties.get(supplier_field, '')),
-                                'Component_Generation': str(item_properties.get(component_gen_field, '')),
-                                'Revision': str(item_properties.get(revision_field, '')),
-                                'Component_Type': str(item_properties.get(component_type_field, '')),
-                                'Process_Code': str(item_properties.get(process_code_field, '')),
-                                'MPN': str(item_properties.get(mpn_field, '')) if mpn_field else ''
-                            })
-                
-                component_validations_df = pd.DataFrame(component_validations_data)
-                data['component_validations_df'] = component_validations_df
-                
-                st.sidebar.success(f"Successfully loaded {len(component_validations_data)} component validations from SharePoint")
-            else:
-                st.sidebar.warning("Could not find Component Validations list")
-                data['component_validations_df'] = pd.DataFrame()
+                    # Only add if we have the minimum required fields
+                    if segment_field and supplier_field and component_gen_field and revision_field and component_type_field and process_code_field:
+                        component_validations_data.append({
+                            'Segment': str(item.get(segment_field, '')),
+                            'Supplier': str(item.get(supplier_field, '')),
+                            'Component_Generation': str(item.get(component_gen_field, '')),
+                            'Revision': str(item.get(revision_field, '')),
+                            'Component_Type': str(item.get(component_type_field, '')),
+                            'Process_Code': str(item.get(process_code_field, '')),
+                            'MPN': str(item.get(mpn_field, '')) if mpn_field else ''
+                        })
             
-            # Try to find Module HW Design Validation list
-            module_validation_list_name = None
-            for list_name in ["Module HW Design Validation", "Module Validation", "Module HW Validation", 
-                             "Module Design", "Module", "Design Validation"]:
-                if any(list_name.lower() in list_title.lower() for list_title in available_lists):
-                    matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
-                    module_validation_list_name = matching_lists[0]  # Take the first matching list
-                    break
+            component_validations_df = pd.DataFrame(component_validations_data)
+            data['component_validations_df'] = component_validations_df
             
-            if module_validation_list_name:
-                st.sidebar.success(f"Found Module Validation list: {module_validation_list_name}")
-                module_validation_list = ctx.web.lists.get_by_title(module_validation_list_name)
+            st.sidebar.success(f"Successfully loaded {len(component_validations_data)} component validations from SharePoint")
+        else:
+            st.sidebar.warning("Could not find Component Validations list")
+        
+        # Try to find Module HW Design Validation list
+        module_validation_list_name = None
+        for list_name in ["Module HW Design Validation", "Module Validation", "Module HW Validation", 
+                         "Module Design", "Module", "Design Validation"]:
+            if any(list_name.lower() in list_title.lower() for list_title in available_lists):
+                matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
+                module_validation_list_name = matching_lists[0]  # Take the first matching list
+                break
+        
+        if module_validation_list_name:
+            st.sidebar.success(f"Found Module Validation list: {module_validation_list_name}")
+            
+            # Get list items using REST API
+            list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(module_validation_list_name)}')/items?$top=5000"
+            response = requests.get(list_items_url, headers=headers)
+            
+            if response.status_code != 200:
+                st.sidebar.error(f"Error getting list items: {response.status_code}")
+                return data
+            
+            items_info = response.json()
+            items = items_info['d']['results']
+            
+            # Convert to DataFrame for module validation data
+            module_validation_data = []
+            
+            if len(items) > 0:
+                # For debugging, print the first item's properties
+                with st.sidebar.expander(f"Sample {module_validation_list_name} Item Fields", expanded=False):
+                    st.write(", ".join(items[0].keys()))
                 
-                # Create a CAML query to get all items
-                caml_query = CamlQuery()
-                caml_query.ViewXml = "<View><RowLimit>5000</RowLimit></View>"
-                
-                # Execute the query
-                items = module_validation_list.get_items(caml_query)
-                ctx.load(items)
-                ctx.execute_query()
-                
-                # Convert to DataFrame for module validation data
-                module_validation_data = []
-                
-                if len(items) > 0:
-                    # For debugging, print the first item's properties
-                    with st.sidebar.expander(f"Sample {module_validation_list_name} Item Fields", expanded=False):
-                        st.write(", ".join(items[0].properties.keys()))
+                for item in items:
+                    # Extract module validation data - adjust field names if needed
+                    segment_field = next((f for f in item.keys() 
+                                       if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
+                    form_factor_field = next((f for f in item.keys() 
+                                           if any(term in f.lower() for term in ['form factor', 'form', 'ff'])), None)
+                    speed_field = next((f for f in item.keys() 
+                                     if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
+                    pmic_field = next((f for f in item.keys() 
+                                    if any(term in f.lower() for term in ['pmic', 'power'])), None)
+                    spd_hub_field = next((f for f in item.keys() 
+                                       if any(term in f.lower() for term in ['spd', 'hub', 'spd/hub'])), None)
+                    temp_sensor_field = next((f for f in item.keys() 
+                                           if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None)
+                    rcd_field = next((f for f in item.keys() 
+                                   if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None)
+                    data_buffer_field = next((f for f in item.keys() 
+                                           if any(term in f.lower() for term in ['data buffer', 'buffer', 'db'])), None)
+                    process_code_field = next((f for f in item.keys() 
+                                            if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
                     
-                    for item in items:
-                        item_properties = item.properties
-                        
-                        # Extract module validation data - adjust field names if needed
-                        segment_field = next((f for f in item_properties.keys() 
-                                           if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
-                        form_factor_field = next((f for f in item_properties.keys() 
-                                               if any(term in f.lower() for term in ['form factor', 'form', 'ff'])), None)
-                        speed_field = next((f for f in item_properties.keys() 
-                                         if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
-                        pmic_field = next((f for f in item_properties.keys() 
-                                        if any(term in f.lower() for term in ['pmic', 'power'])), None)
-                        spd_hub_field = next((f for f in item_properties.keys() 
-                                           if any(term in f.lower() for term in ['spd', 'hub', 'spd/hub'])), None)
-                        temp_sensor_field = next((f for f in item_properties.keys() 
-                                               if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None)
-                        rcd_field = next((f for f in item_properties.keys() 
-                                       if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None)
-                        data_buffer_field = next((f for f in item_properties.keys() 
-                                               if any(term in f.lower() for term in ['data buffer', 'buffer', 'db'])), None)
-                        process_code_field = next((f for f in item_properties.keys() 
-                                                if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
-                        
-                        # Only add if we have the minimum required fields
-                        if segment_field and form_factor_field and speed_field and process_code_field:
-                            module_validation_data.append({
-                                'Segment': str(item_properties.get(segment_field, '')),
-                                'Form_Factor': str(item_properties.get(form_factor_field, '')),
-                                'Speed': str(item_properties.get(speed_field, '')),
-                                'PMIC': str(item_properties.get(pmic_field, '')) if pmic_field else '',
-                                'SPD_Hub': str(item_properties.get(spd_hub_field, '')) if spd_hub_field else '',
-                                'Temp_Sensor': str(item_properties.get(temp_sensor_field, '')) if temp_sensor_field else '',
-                                'RCD_MRCD': str(item_properties.get(rcd_field, '')) if rcd_field else '',
-                                'Data_Buffer': str(item_properties.get(data_buffer_field, '')) if data_buffer_field else '',
-                                'Process_Code': str(item_properties.get(process_code_field, ''))
-                            })
-                
-                module_validation_df = pd.DataFrame(module_validation_data)
-                data['module_validation_df'] = module_validation_df
-                
-                st.sidebar.success(f"Successfully loaded {len(module_validation_data)} module validations from SharePoint")
-            else:
-                st.sidebar.warning("Could not find Module Validation list")
-                data['module_validation_df'] = pd.DataFrame()
+                    # Only add if we have the minimum required fields
+                    if segment_field and form_factor_field and speed_field and process_code_field:
+                        module_validation_data.append({
+                            'Segment': str(item.get(segment_field, '')),
+                            'Form_Factor': str(item.get(form_factor_field, '')),
+                            'Speed': str(item.get(speed_field, '')),
+                            'PMIC': str(item.get(pmic_field, '')) if pmic_field else '',
+                            'SPD_Hub': str(item.get(spd_hub_field, '')) if spd_hub_field else '',
+                            'Temp_Sensor': str(item.get(temp_sensor_field, '')) if temp_sensor_field else '',
+                            'RCD_MRCD': str(item.get(rcd_field, '')) if rcd_field else '',
+                            'Data_Buffer': str(item.get(data_buffer_field, '')) if data_buffer_field else '',
+                            'Process_Code': str(item.get(process_code_field, ''))
+                        })
             
-        except Exception as e:
-            st.sidebar.error(f"Error connecting to SharePoint: {e}")
-            return None
-    
+            module_validation_df = pd.DataFrame(module_validation_data)
+            data['module_validation_df'] = module_validation_df
+            
+            st.sidebar.success(f"Successfully loaded {len(module_validation_data)} module validations from SharePoint")
+        else:
+            st.sidebar.warning("Could not find Module Validation list")
+        
     except Exception as e:
-        st.sidebar.error(f"Error connecting to SharePoint: {e}")
-        return None
-    
-    # If any dataframes are empty, return None
-    if (data.get('component_validations_df', pd.DataFrame()).empty or 
-        data.get('module_validation_df', pd.DataFrame()).empty):
-        st.sidebar.warning("Some data couldn't be loaded from SharePoint.")
-        return None
+        st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
     
     return data
 
@@ -518,12 +551,14 @@ def main():
     
     # Load data from SharePoint
     data = load_data_from_sharepoint()
-    if data is None:
-        st.error("Failed to load data from SharePoint. Please check your credentials and try again.")
-        st.stop()
     
     component_validations_df = data['component_validations_df']
     module_validation_df = data['module_validation_df']
+    
+    # Check if data is loaded
+    if component_validations_df.empty or module_validation_df.empty:
+        st.error("Failed to load data from SharePoint. Please check your credentials and try again.")
+        st.stop()
     
     # Display data refresh time
     st.sidebar.info(f"Data last refreshed: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -546,7 +581,7 @@ def main():
             # Get unique segments from the data
             try:
                 segment_options = component_validations_df['Segment'].unique().tolist()
-                segment_options = [str(x) for x in segment_options if x is not None]
+                segment_options = [str(x) for x in segment_options if x is not None and str(x).strip()]
                 segment_options = sorted(segment_options) if segment_options else ["Client", "Server"]
             except (KeyError, AttributeError, ValueError, TypeError) as e:
                 st.warning(f"Could not load Segment options: {e}")
@@ -557,7 +592,7 @@ def main():
             # Get unique suppliers from the data
             try:
                 supplier_options = component_validations_df['Supplier'].unique().tolist()
-                supplier_options = [str(x) for x in supplier_options if x is not None]
+                supplier_options = [str(x) for x in supplier_options if x is not None and str(x).strip()]
                 supplier_options = sorted(supplier_options) if supplier_options else ["Renesas", "IDT", "Maxim", "Montage", "Rambus", "TI", "Infineon", "Microchip"]
             except (KeyError, AttributeError, ValueError, TypeError) as e:
                 st.warning(f"Could not load Supplier options: {e}")
@@ -568,7 +603,7 @@ def main():
             # Get unique component generations from the data
             try:
                 component_gen_options = component_validations_df['Component_Generation'].unique().tolist()
-                component_gen_options = [str(x) for x in component_gen_options if x is not None]
+                component_gen_options = [str(x) for x in component_gen_options if x is not None and str(x).strip()]
                 component_gen_options = sorted(component_gen_options) if component_gen_options else ["Gen1", "Gen2", "Gen3"]
             except (KeyError, AttributeError, ValueError, TypeError) as e:
                 st.warning(f"Could not load Component Generation options: {e}")
@@ -579,7 +614,7 @@ def main():
             # Get unique revisions from the data
             try:
                 revision_options = component_validations_df['Revision'].unique().tolist()
-                revision_options = [str(x) for x in revision_options if x is not None]
+                revision_options = [str(x) for x in revision_options if x is not None and str(x).strip()]
                 revision_options = sorted(revision_options) if revision_options else ["A", "B", "C"]
             except (KeyError, AttributeError, ValueError, TypeError) as e:
                 st.warning(f"Could not load Revision options: {e}")
@@ -600,7 +635,6 @@ def main():
                     selected_segment, selected_supplier, selected_component_gen, selected_revision, component_validations_df
                 )
                 
-
                 if isinstance(process_code, str) and not process_code.startswith("No matching") and not process_code.startswith("Error"):
                     result_text = f"Generated Process Code: {process_code}\nComponent Type: {component_type}"
                 else:
@@ -621,7 +655,7 @@ def main():
             # Get unique segments from the data
             try:
                 segment_options = module_validation_df['Segment'].unique().tolist()
-                segment_options = [str(x) for x in segment_options if x is not None]
+                segment_options = [str(x) for x in segment_options if x is not None and str(x).strip()]
                 segment_options = sorted(segment_options) if segment_options else ["Client", "Server"]
             except (KeyError, AttributeError, ValueError, TypeError) as e:
                 st.warning(f"Could not load Segment options: {e}")
@@ -640,7 +674,7 @@ def main():
                     pmic_supplier_options = component_validations_df[
                         component_validations_df['Component_Type'] == 'PMIC'
                     ]['Supplier'].unique().tolist()
-                    pmic_supplier_options = [str(x) for x in pmic_supplier_options if x is not None]
+                    pmic_supplier_options = [str(x) for x in pmic_supplier_options if x is not None and str(x).strip()]
                     pmic_supplier_options = sorted(pmic_supplier_options) if pmic_supplier_options else ["Renesas", "TI", "Infineon"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
                     pmic_supplier_options = ["Renesas", "TI", "Infineon"]
@@ -653,7 +687,7 @@ def main():
                         (component_validations_df['Component_Type'] == 'PMIC') & 
                         (component_validations_df['Supplier'] == pmic_supplier)
                     ]['Component_Generation'].unique().tolist()
-                    pmic_gen_options = [str(x) for x in pmic_gen_options if x is not None]
+                    pmic_gen_options = [str(x) for x in pmic_gen_options if x is not None and str(x).strip()]
                     pmic_gen_options = sorted(pmic_gen_options) if pmic_gen_options else ["Gen1", "Gen2", "Gen3"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
                     pmic_gen_options = ["Gen1", "Gen2", "Gen3"]
@@ -667,7 +701,7 @@ def main():
                         (component_validations_df['Supplier'] == pmic_supplier) & 
                         (component_validations_df['Component_Generation'] == pmic_gen)
                     ]['Revision'].unique().tolist()
-                    pmic_rev_options = [str(x) for x in pmic_rev_options if x is not None]
+                    pmic_rev_options = [str(x) for x in pmic_rev_options if x is not None and str(x).strip()]
                     pmic_rev_options = sorted(pmic_rev_options) if pmic_rev_options else ["A", "B", "C"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
                     pmic_rev_options = ["A", "B", "C"]
@@ -690,8 +724,8 @@ def main():
                     temp_supplier_options = component_validations_df[
                         component_validations_df['Component_Type'] == 'Temp Sensor'
                     ]['Supplier'].unique().tolist()
-                    temp_supplier_options = [str(x) for x in temp_supplier_options if x is not None]
-                    temp_supplier_options = sorted(temp_supplier_options) if temp_supplier_options else ["Maxim", "Microchip", "None"]
+                    temp_supplier_options = [str(x) for x in temp_supplier_options if x is not None and str(x).strip()]
+                    temp_supplier_options = sorted(temp_supplier_options) + ["None"] if temp_supplier_options else ["Maxim", "Microchip", "None"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
                     temp_supplier_options = ["Maxim", "Microchip", "None"]
                     
@@ -704,7 +738,7 @@ def main():
                             (component_validations_df['Component_Type'] == 'Temp Sensor') & 
                             (component_validations_df['Supplier'] == temp_supplier)
                         ]['Component_Generation'].unique().tolist()
-                        temp_gen_options = [str(x) for x in temp_gen_options if x is not None]
+                        temp_gen_options = [str(x) for x in temp_gen_options if x is not None and str(x).strip()]
                         temp_gen_options = sorted(temp_gen_options) if temp_gen_options else ["Gen1", "Gen2", "Gen3"]
                     except (KeyError, AttributeError, ValueError, TypeError) as e:
                         temp_gen_options = ["Gen1", "Gen2", "Gen3"]
@@ -718,7 +752,7 @@ def main():
                             (component_validations_df['Supplier'] == temp_supplier) & 
                             (component_validations_df['Component_Generation'] == temp_gen)
                         ]['Revision'].unique().tolist()
-                        temp_rev_options = [str(x) for x in temp_rev_options if x is not None]
+                        temp_rev_options = [str(x) for x in temp_rev_options if x is not None and str(x).strip()]
                         temp_rev_options = sorted(temp_rev_options) if temp_rev_options else ["A", "B", "C"]
                     except (KeyError, AttributeError, ValueError, TypeError) as e:
                         temp_rev_options = ["A", "B", "C"]
@@ -735,64 +769,6 @@ def main():
                         st.error(f"Temp Sensor Process Code: {temp_code}")
                 else:
                     temp_code = ""
-                    st.info("No temperature sensor selected")
-                
-                if selected_segment.lower() == 'server':
-                    st.subheader("Data Buffer (Optional)")
-                    
-                    # Get unique suppliers for Data Buffer
-                    try:
-                        db_supplier_options = component_validations_df[
-                            component_validations_df['Component_Type'] == 'Data Buffer'
-                        ]['Supplier'].unique().tolist()
-                        db_supplier_options = [str(x) for x in db_supplier_options if x is not None]
-                        db_supplier_options = sorted(db_supplier_options) + ["None"] if db_supplier_options else ["Rambus", "Montage", "None"]
-                    except (KeyError, AttributeError, ValueError, TypeError) as e:
-                        db_supplier_options = ["Rambus", "Montage", "None"]
-                        
-                    db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
-                    
-                    if db_supplier != "None":
-                        # Get unique component generations for Data Buffer
-                        try:
-                            db_gen_options = component_validations_df[
-                                (component_validations_df['Component_Type'] == 'Data Buffer') & 
-                                (component_validations_df['Supplier'] == db_supplier)
-                            ]['Component_Generation'].unique().tolist()
-                            db_gen_options = [str(x) for x in db_gen_options if x is not None]
-                            db_gen_options = sorted(db_gen_options) if db_gen_options else ["Gen1", "Gen2", "Gen3"]
-                        except (KeyError, AttributeError, ValueError, TypeError) as e:
-                            db_gen_options = ["Gen1", "Gen2", "Gen3"]
-                            
-                        db_gen = st.selectbox("Component Generation", options=db_gen_options, key="db_gen")
-                        
-                        # Get unique revisions for Data Buffer
-                        try:
-                            db_rev_options = component_validations_df[
-                                (component_validations_df['Component_Type'] == 'Data Buffer') & 
-                                (component_validations_df['Supplier'] == db_supplier) & 
-                                (component_validations_df['Component_Generation'] == db_gen)
-                            ]['Revision'].unique().tolist()
-                            db_rev_options = [str(x) for x in db_rev_options if x is not None]
-                            db_rev_options = sorted(db_rev_options) if db_rev_options else ["A", "B", "C"]
-                        except (KeyError, AttributeError, ValueError, TypeError) as e:
-                            db_rev_options = ["A", "B", "C"]
-                            
-                        db_rev = st.selectbox("Revision", options=db_rev_options, key="db_rev")
-                        
-                        # Get Data Buffer process code
-                        db_code, _, _ = get_component_process_code(
-                            selected_segment, db_supplier, db_gen, db_rev, component_validations_df
-                        )
-                        if isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error"):
-                            st.success(f"Data Buffer Process Code: {db_code}")
-                        else:
-                            st.error(f"Data Buffer Process Code: {db_code}")
-                    else:
-                        db_code = ""
-                        st.info("No data buffer selected")
-                else:
-                    db_code = ""
             
             with col2:
                 st.subheader("SPD/Hub")
@@ -802,10 +778,10 @@ def main():
                     spd_supplier_options = component_validations_df[
                         component_validations_df['Component_Type'] == 'SPD/Hub'
                     ]['Supplier'].unique().tolist()
-                    spd_supplier_options = [str(x) for x in spd_supplier_options if x is not None]
-                    spd_supplier_options = sorted(spd_supplier_options) if spd_supplier_options else ["IDT", "Infineon", "Rambus"]
+                    spd_supplier_options = [str(x) for x in spd_supplier_options if x is not None and str(x).strip()]
+                    spd_supplier_options = sorted(spd_supplier_options) if spd_supplier_options else ["IDT", "Montage", "Rambus"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
-                    spd_supplier_options = ["IDT", "Infineon", "Rambus"]
+                    spd_supplier_options = ["IDT", "Montage", "Rambus"]
                     
                 spd_supplier = st.selectbox("Supplier", options=spd_supplier_options, key="spd_supplier")
                 
@@ -815,7 +791,7 @@ def main():
                         (component_validations_df['Component_Type'] == 'SPD/Hub') & 
                         (component_validations_df['Supplier'] == spd_supplier)
                     ]['Component_Generation'].unique().tolist()
-                    spd_gen_options = [str(x) for x in spd_gen_options if x is not None]
+                    spd_gen_options = [str(x) for x in spd_gen_options if x is not None and str(x).strip()]
                     spd_gen_options = sorted(spd_gen_options) if spd_gen_options else ["Gen1", "Gen2", "Gen3"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
                     spd_gen_options = ["Gen1", "Gen2", "Gen3"]
@@ -829,7 +805,7 @@ def main():
                         (component_validations_df['Supplier'] == spd_supplier) & 
                         (component_validations_df['Component_Generation'] == spd_gen)
                     ]['Revision'].unique().tolist()
-                    spd_rev_options = [str(x) for x in spd_rev_options if x is not None]
+                    spd_rev_options = [str(x) for x in spd_rev_options if x is not None and str(x).strip()]
                     spd_rev_options = sorted(spd_rev_options) if spd_rev_options else ["A", "B", "C"]
                 except (KeyError, AttributeError, ValueError, TypeError) as e:
                     spd_rev_options = ["A", "B", "C"]
@@ -845,6 +821,7 @@ def main():
                 else:
                     st.error(f"SPD/Hub Process Code: {spd_code}")
                 
+                # Only show RCD/MRCD for Server segment
                 if selected_segment.lower() == 'server':
                     st.subheader("RCD/MRCD")
                     
@@ -853,10 +830,10 @@ def main():
                         rcd_supplier_options = component_validations_df[
                             component_validations_df['Component_Type'] == 'RCD/MRCD'
                         ]['Supplier'].unique().tolist()
-                        rcd_supplier_options = [str(x) for x in rcd_supplier_options if x is not None]
-                        rcd_supplier_options = sorted(rcd_supplier_options) if rcd_supplier_options else ["Montage", "Rambus", "IDT"]
+                        rcd_supplier_options = [str(x) for x in rcd_supplier_options if x is not None and str(x).strip()]
+                        rcd_supplier_options = sorted(rcd_supplier_options) if rcd_supplier_options else ["Montage", "Rambus", "Renesas"]
                     except (KeyError, AttributeError, ValueError, TypeError) as e:
-                        rcd_supplier_options = ["Montage", "Rambus", "IDT"]
+                        rcd_supplier_options = ["Montage", "Rambus", "Renesas"]
                         
                     rcd_supplier = st.selectbox("Supplier", options=rcd_supplier_options, key="rcd_supplier")
                     
@@ -866,7 +843,7 @@ def main():
                             (component_validations_df['Component_Type'] == 'RCD/MRCD') & 
                             (component_validations_df['Supplier'] == rcd_supplier)
                         ]['Component_Generation'].unique().tolist()
-                        rcd_gen_options = [str(x) for x in rcd_gen_options if x is not None]
+                        rcd_gen_options = [str(x) for x in rcd_gen_options if x is not None and str(x).strip()]
                         rcd_gen_options = sorted(rcd_gen_options) if rcd_gen_options else ["Gen1", "Gen2", "Gen3"]
                     except (KeyError, AttributeError, ValueError, TypeError) as e:
                         rcd_gen_options = ["Gen1", "Gen2", "Gen3"]
@@ -880,7 +857,7 @@ def main():
                             (component_validations_df['Supplier'] == rcd_supplier) & 
                             (component_validations_df['Component_Generation'] == rcd_gen)
                         ]['Revision'].unique().tolist()
-                        rcd_rev_options = [str(x) for x in rcd_rev_options if x is not None]
+                        rcd_rev_options = [str(x) for x in rcd_rev_options if x is not None and str(x).strip()]
                         rcd_rev_options = sorted(rcd_rev_options) if rcd_rev_options else ["A", "B", "C"]
                     except (KeyError, AttributeError, ValueError, TypeError) as e:
                         rcd_rev_options = ["A", "B", "C"]
@@ -897,6 +874,63 @@ def main():
                         st.error(f"RCD/MRCD Process Code: {rcd_code}")
                 else:
                     rcd_code = ""
+                
+                # Only show Data Buffer for Server segment
+                if selected_segment.lower() == 'server':
+                    st.subheader("Data Buffer (Optional)")
+                    
+                    # Get unique suppliers for Data Buffer
+                    try:
+                        db_supplier_options = component_validations_df[
+                            component_validations_df['Component_Type'] == 'Data Buffer'
+                        ]['Supplier'].unique().tolist()
+                        db_supplier_options = [str(x) for x in db_supplier_options if x is not None and str(x).strip()]
+                        db_supplier_options = sorted(db_supplier_options) + ["None"] if db_supplier_options else ["Montage", "Rambus", "None"]
+                    except (KeyError, AttributeError, ValueError, TypeError) as e:
+                        db_supplier_options = ["Montage", "Rambus", "None"]
+                        
+                    db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
+                    
+                    if db_supplier != "None":
+                        # Get unique component generations for Data Buffer
+                        try:
+                            db_gen_options = component_validations_df[
+                                (component_validations_df['Component_Type'] == 'Data Buffer') & 
+                                (component_validations_df['Supplier'] == db_supplier)
+                            ]['Component_Generation'].unique().tolist()
+                            db_gen_options = [str(x) for x in db_gen_options if x is not None and str(x).strip()]
+                            db_gen_options = sorted(db_gen_options) if db_gen_options else ["Gen1", "Gen2", "Gen3"]
+                        except (KeyError, AttributeError, ValueError, TypeError) as e:
+                            db_gen_options = ["Gen1", "Gen2", "Gen3"]
+                            
+                        db_gen = st.selectbox("Component Generation", options=db_gen_options, key="db_gen")
+                        
+                        # Get unique revisions for Data Buffer
+                        try:
+                            db_rev_options = component_validations_df[
+                                (component_validations_df['Component_Type'] == 'Data Buffer') & 
+                                (component_validations_df['Supplier'] == db_supplier) & 
+                                (component_validations_df['Component_Generation'] == db_gen)
+                            ]['Revision'].unique().tolist()
+                            db_rev_options = [str(x) for x in db_rev_options if x is not None and str(x).strip()]
+                            db_rev_options = sorted(db_rev_options) if db_rev_options else ["A", "B", "C"]
+                        except (KeyError, AttributeError, ValueError, TypeError) as e:
+                            db_rev_options = ["A", "B", "C"]
+                            
+                        db_rev = st.selectbox("Revision", options=db_rev_options, key="db_rev")
+                        
+                        # Get Data Buffer process code
+                        db_code, _, _ = get_component_process_code(
+                            selected_segment, db_supplier, db_gen, db_rev, component_validations_df
+                        )
+                        if isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error"):
+                            st.success(f"Data Buffer Process Code: {db_code}")
+                        else:
+                            st.error(f"Data Buffer Process Code: {db_code}")
+                    else:
+                        db_code = ""
+                else:
+                    db_code = ""
             
             # Button to generate combined process code
             if st.button("Generate Module Process Code"):

@@ -1,1 +1,2 @@
-office365-rest-python-client
+msal
+requests
