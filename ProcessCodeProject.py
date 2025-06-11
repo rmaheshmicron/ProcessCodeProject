@@ -127,7 +127,7 @@ def load_data_from_sharepoint():
     data = {}
     
     # SharePoint connection settings
-    sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
+    sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg/SitePages/Module-HW-Design-Validation.aspx"
     
     # Get credentials from secrets or sidebar inputs
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
@@ -153,7 +153,7 @@ def load_data_from_sharepoint():
         # Load process code data from "Basic List"
         try:
             # URL: https://microncorp.sharepoint.com/:l:/r/sites/mdg/Lists/Basic%20List?e=GJ7RDd
-            hw_validation_list = ctx.web.lists.get_by_title("Basic List")
+            hw_validation_list = ctx.web.lists.get_by_title("Non-DRAM Component Validations")
             
             # Create a CAML query to get all items
             caml_query = CamlQuery()
