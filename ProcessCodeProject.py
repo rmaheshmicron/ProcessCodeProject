@@ -117,8 +117,9 @@ def show_process_code_info():
         The "Process Code" is a mechanism for BOM segregation and manufacturing purposes with each character representing a specific non-DRAM Active Component.
         
         #### D5 Server Process Code Structure
+        
         | Component | Position in PROCESS_CODE | Position in PROCESS_CODE_PRINT |
-        |-----------|--------------------------|--------------------------------|
+        | --- | --- | --- |
         | PMIC | 1 | 1 |
         | SPD/Hub | 2 | 3 |
         | Temp Sensor | 3 | 4 |
@@ -130,8 +131,9 @@ def show_process_code_info():
         **D5 Server PROCESS CODE PRINT:** PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer (if applicable)
         
         #### D5 Client Process Code Structure
+        
         | Component | Position in PROCESS_CODE | Position in PROCESS_CODE_PRINT |
-        |-----------|--------------------------|--------------------------------|
+        | --- | --- | --- |
         | PMIC | 1 | 1 |
         | SPD/Hub | 2 | 2 |
         | CKD (if applicable) | 3 | 3 |
