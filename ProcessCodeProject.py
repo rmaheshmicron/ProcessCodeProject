@@ -189,7 +189,7 @@ def load_data_from_sharepoint():
         component_validations_data = []
         
         field_mapping = {
-            'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market', 'title'])), 'Title'),
+            'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market'])), 'Segment'),
             'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
             'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['generation', 'gen', 'componentgen'])), None),
             'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None),
@@ -215,7 +215,7 @@ def load_data_from_sharepoint():
                 for prop_key, prop_value in item_properties.items():
                     if prop_key not in ['_ObjectType_', '_ObjectIdentity_', 'FileSystemObjectType', 'ServerRedirectedEmbedUri', 
                                        'ServerRedirectedEmbedUrl', 'ContentTypeId', 'ComplianceAssetId', 'OData__UIVersionString']:
-                        if prop_key == 'Segment':
+                        if prop_key == 'Title':
                             record['Segment'] = str(prop_value)
                         elif 'supplier' in prop_key.lower():
                             record['Supplier'] = str(prop_value)
