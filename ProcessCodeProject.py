@@ -88,6 +88,7 @@ def load_data_from_sharepoint():
     }
     
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
+    list_name = "Basic List"
     
     parsed_url = urlparse(sharepoint_site)
     tenant = parsed_url.netloc.split('.')[0]
@@ -146,41 +147,48 @@ def load_data_from_sharepoint():
             "Content-Type": "application/json;odata=verbose"
         }
         
-        site_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')"
-        response = requests.get(site_url, headers=headers)
+        list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(list_name)}')/items?$top=5000"
+        response = requests.get(list_items_url, headers=headers)
         
         if response.status_code != 200:
-            st.sidebar.error(f"Error accessing SharePoint site: {response.status_code}")
-            return data
-        
-        site_info = response.json()
-        site_id = site_info['d']['Id']
-        
-        st.sidebar.success(f"Connected to SharePoint site: {site_info['d']['Title']}")
-        
-        lists_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists"
-        response = requests.get(lists_url, headers=headers)
-        
-        if response.status_code != 200:
-            st.sidebar.error(f"Error getting SharePoint lists: {response.status_code}")
-            return data
-        
-        lists_info = response.json()
-        available_lists = [list_item['Title'] for list_item in lists_info['d']['results']]
-        
-        with st.sidebar.expander("Available SharePoint Lists", expanded=False):
-            st.write(", ".join(available_lists))
-        
-        component_validations_list_name = None
-        for list_name in ["Module HW Design Component Validations", "Component Validations", "HW Validation", 
-                         "Components", "Parts", "Validations", "Hardware"]:
-            if any(list_name.lower() in list_title.lower() for list_title in available_lists):
-                matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
-                component_validations_list_name = matching_lists[0]
-                break
-        
-        if component_validations_list_name:
-            st.sidebar.success(f"Found Component Validations list: {component_validations_list_name}")
+            st.sidebar.warning(f"Direct access to '{list_name}' failed. Trying to find it among all lists...")
+            
+            site_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')"
+            response = requests.get(site_url, headers=headers)
+            
+            if response.status_code != 200:
+                st.sidebar.error(f"Error accessing SharePoint site: {response.status_code}")
+                return data
+            
+            site_info = response.json()
+            site_id = site_info['d']['Id']
+            
+            st.sidebar.success(f"Connected to SharePoint site: {site_info['d']['Title']}")
+            
+            lists_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists"
+            response = requests.get(lists_url, headers=headers)
+            
+            if response.status_code != 200:
+                st.sidebar.error(f"Error getting SharePoint lists: {response.status_code}")
+                return data
+            
+            lists_info = response.json()
+            available_lists = [list_item['Title'] for list_item in lists_info['d']['results']]
+            
+            with st.sidebar.expander("Available SharePoint Lists", expanded=False):
+                st.write(", ".join(available_lists))
+            
+            component_validations_list_name = None
+            for list_title in available_lists:
+                if "basic" in list_title.lower() or "component" in list_title.lower() or "validation" in list_title.lower():
+                    component_validations_list_name = list_title
+                    break
+            
+            if not component_validations_list_name:
+                st.sidebar.error(f"Could not find '{list_name}' or similar list")
+                return data
+            
+            st.sidebar.success(f"Found list: {component_validations_list_name}")
             
             list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(component_validations_list_name)}')/items?$top=5000"
             response = requests.get(list_items_url, headers=headers)
@@ -188,116 +196,102 @@ def load_data_from_sharepoint():
             if response.status_code != 200:
                 st.sidebar.error(f"Error getting list items: {response.status_code}")
                 return data
-            
-            items_info = response.json()
-            items = items_info['d']['results']
-            
-            component_validations_data = []
-            
-            if len(items) > 0:
-                with st.sidebar.expander(f"Sample {component_validations_list_name} Item Fields", expanded=False):
-                    st.write(", ".join(items[0].keys()))
-                
-                for item in items:
-                    segment_field = next((f for f in item.keys() 
-                                       if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
-                    supplier_field = next((f for f in item.keys() 
-                                        if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None)
-                    component_gen_field = next((f for f in item.keys() 
-                                             if any(term in f.lower() for term in ['generation', 'gen', 'component gen'])), None)
-                    revision_field = next((f for f in item.keys() 
-                                        if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None)
-                    component_type_field = next((f for f in item.keys() 
-                                              if any(term in f.lower() for term in ['component type', 'type', 'comp type'])), None)
-                    process_code_field = next((f for f in item.keys() 
-                                            if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
-                    mpn_field = next((f for f in item.keys() 
-                                   if any(term in f.lower() for term in ['mpn', 'part number', 'part'])), None)
-                    
-                    if segment_field and supplier_field and component_gen_field and revision_field and component_type_field and process_code_field:
-                        component_validations_data.append({
-                            'Segment': str(item.get(segment_field, '')),
-                            'Supplier': str(item.get(supplier_field, '')),
-                            'Component_Generation': str(item.get(component_gen_field, '')),
-                            'Revision': str(item.get(revision_field, '')),
-                            'Component_Type': str(item.get(component_type_field, '')),
-                            'Process_Code': str(item.get(process_code_field, '')),
-                            'MPN': str(item.get(mpn_field, '')) if mpn_field else ''
-                        })
-            
-            component_validations_df = pd.DataFrame(component_validations_data)
-            data['component_validations_df'] = component_validations_df
-            
-            st.sidebar.success(f"Successfully loaded {len(component_validations_data)} component validations from SharePoint")
-        else:
-            st.sidebar.warning("Could not find Component Validations list")
         
-        module_validation_list_name = None
-        for list_name in ["Module HW Design Validation", "Module Validation", "Module HW Validation", 
-                         "Module Design", "Module", "Design Validation"]:
-            if any(list_name.lower() in list_title.lower() for list_title in available_lists):
-                matching_lists = [list_title for list_title in available_lists if list_name.lower() in list_title.lower()]
-                module_validation_list_name = matching_lists[0]
-                break
+        items_info = response.json()
+        items = items_info['d']['results']
         
-        if module_validation_list_name:
-            st.sidebar.success(f"Found Module Validation list: {module_validation_list_name}")
+        if len(items) == 0:
+            st.sidebar.error("No items found in the list")
+            return data
+        
+        with st.sidebar.expander("Sample Item Fields", expanded=False):
+            st.write(", ".join(items[0].keys()))
+        
+        component_validations_data = []
+        
+        for item in items:
+            segment_field = next((f for f in item.keys() 
+                               if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
+            supplier_field = next((f for f in item.keys() 
+                                if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None)
+            component_gen_field = next((f for f in item.keys() 
+                                     if any(term in f.lower() for term in ['generation', 'gen', 'component gen'])), None)
+            revision_field = next((f for f in item.keys() 
+                                if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None)
+            component_type_field = next((f for f in item.keys() 
+                                      if any(term in f.lower() for term in ['component type', 'type', 'comp type'])), None)
+            process_code_field = next((f for f in item.keys() 
+                                    if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
+            mpn_field = next((f for f in item.keys() 
+                           if any(term in f.lower() for term in ['mpn', 'part number', 'part'])), None)
             
-            list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(module_validation_list_name)}')/items?$top=5000"
-            response = requests.get(list_items_url, headers=headers)
+            if not segment_field and 'Title' in item:
+                segment_field = 'Title'
+            if not supplier_field and 'Author' in item:
+                supplier_field = 'Author'
             
-            if response.status_code != 200:
-                st.sidebar.error(f"Error getting list items: {response.status_code}")
-                return data
+            record = {
+                'Segment': str(item.get(segment_field, '')) if segment_field else '',
+                'Supplier': str(item.get(supplier_field, '')) if supplier_field else '',
+                'Component_Generation': str(item.get(component_gen_field, '')) if component_gen_field else '',
+                'Revision': str(item.get(revision_field, '')) if revision_field else '',
+                'Component_Type': str(item.get(component_type_field, '')) if component_type_field else '',
+                'Process_Code': str(item.get(process_code_field, '')) if process_code_field else '',
+                'MPN': str(item.get(mpn_field, '')) if mpn_field else ''
+            }
             
-            items_info = response.json()
-            items = items_info['d']['results']
+            if record['Segment'] and (record['Supplier'] or record['Component_Type'] or record['Process_Code']):
+                component_validations_data.append(record)
+        
+        component_validations_df = pd.DataFrame(component_validations_data)
+        data['component_validations_df'] = component_validations_df
+        
+        st.sidebar.success(f"Successfully loaded {len(component_validations_data)} component validations from SharePoint")
+        
+        with st.sidebar.expander("Sample Data (First 5 Rows)", expanded=False):
+            st.dataframe(component_validations_df.head())
+        
+        module_validation_data = []
+        
+        for item in items:
+            segment_field = next((f for f in item.keys() 
+                               if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
+            form_factor_field = next((f for f in item.keys() 
+                                   if any(term in f.lower() for term in ['form factor', 'form', 'ff'])), None)
+            speed_field = next((f for f in item.keys() 
+                             if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
+            pmic_field = next((f for f in item.keys() 
+                            if any(term in f.lower() for term in ['pmic', 'power'])), None)
+            spd_hub_field = next((f for f in item.keys() 
+                               if any(term in f.lower() for term in ['spd', 'hub', 'spd/hub'])), None)
+            temp_sensor_field = next((f for f in item.keys() 
+                                   if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None)
+            rcd_field = next((f for f in item.keys() 
+                           if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None)
+            data_buffer_field = next((f for f in item.keys() 
+                                   if any(term in f.lower() for term in ['data buffer', 'buffer', 'db'])), None)
+            process_code_field = next((f for f in item.keys() 
+                                    if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
             
-            module_validation_data = []
-            
-            if len(items) > 0:
-                with st.sidebar.expander(f"Sample {module_validation_list_name} Item Fields", expanded=False):
-                    st.write(", ".join(items[0].keys()))
-                
-                for item in items:
-                    segment_field = next((f for f in item.keys() 
-                                       if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
-                    form_factor_field = next((f for f in item.keys() 
-                                           if any(term in f.lower() for term in ['form factor', 'form', 'ff'])), None)
-                    speed_field = next((f for f in item.keys() 
-                                     if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
-                    pmic_field = next((f for f in item.keys() 
-                                    if any(term in f.lower() for term in ['pmic', 'power'])), None)
-                    spd_hub_field = next((f for f in item.keys() 
-                                       if any(term in f.lower() for term in ['spd', 'hub', 'spd/hub'])), None)
-                    temp_sensor_field = next((f for f in item.keys() 
-                                           if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None)
-                    rcd_field = next((f for f in item.keys() 
-                                   if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None)
-                    data_buffer_field = next((f for f in item.keys() 
-                                           if any(term in f.lower() for term in ['data buffer', 'buffer', 'db'])), None)
-                    process_code_field = next((f for f in item.keys() 
-                                            if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
-                    
-                    if segment_field and form_factor_field and speed_field and process_code_field:
-                        module_validation_data.append({
-                            'Segment': str(item.get(segment_field, '')),
-                            'Form_Factor': str(item.get(form_factor_field, '')),
-                            'Speed': str(item.get(speed_field, '')),
-                            'PMIC': str(item.get(pmic_field, '')) if pmic_field else '',
-                            'SPD_Hub': str(item.get(spd_hub_field, '')) if spd_hub_field else '',
-                            'Temp_Sensor': str(item.get(temp_sensor_field, '')) if temp_sensor_field else '',
-                            'RCD_MRCD': str(item.get(rcd_field, '')) if rcd_field else '',
-                            'Data_Buffer': str(item.get(data_buffer_field, '')) if data_buffer_field else '',
-                            'Process_Code': str(item.get(process_code_field, ''))
-                        })
-            
-            module_validation_df = pd.DataFrame(module_validation_data)
-            data['module_validation_df'] = module_validation_df
-            
+            if segment_field and process_code_field:
+                record = {
+                    'Segment': str(item.get(segment_field, '')),
+                    'Form_Factor': str(item.get(form_factor_field, '')) if form_factor_field else '',
+                    'Speed': str(item.get(speed_field, '')) if speed_field else '',
+                    'PMIC': str(item.get(pmic_field, '')) if pmic_field else '',
+                    'SPD_Hub': str(item.get(spd_hub_field, '')) if spd_hub_field else '',
+                    'Temp_Sensor': str(item.get(temp_sensor_field, '')) if temp_sensor_field else '',
+                    'RCD_MRCD': str(item.get(rcd_field, '')) if rcd_field else '',
+                    'Data_Buffer': str(item.get(data_buffer_field, '')) if data_buffer_field else '',
+                    'Process_Code': str(item.get(process_code_field, ''))
+                }
+                module_validation_data.append(record)
+        
+        module_validation_df = pd.DataFrame(module_validation_data)
+        data['module_validation_df'] = module_validation_df
+        
+        if not module_validation_df.empty:
             st.sidebar.success(f"Successfully loaded {len(module_validation_data)} module validations from SharePoint")
-        else:
-            st.sidebar.warning("Could not find Module Validation list")
         
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
@@ -306,18 +300,55 @@ def load_data_from_sharepoint():
 
 def get_component_process_code(segment, supplier, component_gen, revision, component_validations_df):
     try:
-        filtered_df = component_validations_df[
-            (component_validations_df['Segment'].str.lower() == segment.lower()) & 
-            (component_validations_df['Supplier'].str.lower() == supplier.lower()) & 
-            (component_validations_df['Component_Generation'].str.lower() == component_gen.lower()) & 
-            (component_validations_df['Revision'].str.lower() == revision.lower())
-        ]
+        if component_validations_df.empty:
+            return "No component validation data available", None, None
+        
+        df = component_validations_df.copy()
+        
+        for col in ['Segment', 'Supplier', 'Component_Generation', 'Revision']:
+            if col in df.columns:
+                df[col] = df[col].str.lower()
+        
+        filters = []
+        if segment and 'Segment' in df.columns:
+            filters.append(df['Segment'] == segment.lower())
+        if supplier and 'Supplier' in df.columns:
+            filters.append(df['Supplier'] == supplier.lower())
+        if component_gen and 'Component_Generation' in df.columns:
+            filters.append(df['Component_Generation'] == component_gen.lower())
+        if revision and 'Revision' in df.columns:
+            filters.append(df['Revision'] == revision.lower())
+        
+        if filters:
+            filtered_df = df.copy()
+            for f in filters:
+                filtered_df = filtered_df[f]
+        else:
+            filtered_df = df.copy()
         
         if filtered_df.empty:
-            return "No matching process code found for the given criteria", None, None
+            st.warning("No exact match found. Trying partial match...")
+            
+            relaxed_filters = []
+            if segment and 'Segment' in df.columns:
+                relaxed_filters.append(df['Segment'].str.contains(segment.lower()))
+            if supplier and 'Supplier' in df.columns:
+                relaxed_filters.append(df['Supplier'].str.contains(supplier.lower()))
+            if component_gen and 'Component_Generation' in df.columns:
+                relaxed_filters.append(df['Component_Generation'].str.contains(component_gen.lower()))
+            if revision and 'Revision' in df.columns:
+                relaxed_filters.append(df['Revision'].str.contains(revision.lower()))
+            
+            if relaxed_filters:
+                filtered_df = df.copy()
+                for f in relaxed_filters:
+                    filtered_df = filtered_df[f]
+            
+            if filtered_df.empty:
+                return "No matching process code found for the given criteria", None, None
         
         process_code = filtered_df.iloc[0]['Process_Code']
-        component_type = filtered_df.iloc[0]['Component_Type']
+        component_type = filtered_df.iloc[0]['Component_Type'] if 'Component_Type' in filtered_df.columns else "Unknown"
         
         return process_code, component_type, filtered_df
     
@@ -355,6 +386,9 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
         if not process_code:
             return "No process code provided"
         
+        if component_validations_df.empty:
+            return "No component validation data available"
+        
         component_codes = list(process_code)
         
         result_parts = []
@@ -369,12 +403,26 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
                     result_parts.append({
                         'Position': i + 1,
                         'Process_Code_Char': code,
-                        'Component_Type': row['Component_Type'],
-                        'Supplier': row['Supplier'],
-                        'Component_Generation': row['Component_Generation'],
-                        'Revision': row['Revision'],
-                        'MPN': row['MPN']
+                        'Component_Type': row['Component_Type'] if 'Component_Type' in row else "Unknown",
+                        'Supplier': row['Supplier'] if 'Supplier' in row else "Unknown",
+                        'Component_Generation': row['Component_Generation'] if 'Component_Generation' in row else "Unknown",
+                        'Revision': row['Revision'] if 'Revision' in row else "Unknown",
+                        'MPN': row['MPN'] if 'MPN' in row else "Unknown"
                     })
+        
+        if not result_parts:
+            for i, code in enumerate(component_codes):
+                for _, row in component_validations_df.iterrows():
+                    if 'Process_Code' in row and code in str(row['Process_Code']):
+                        result_parts.append({
+                            'Position': i + 1,
+                            'Process_Code_Char': code,
+                            'Component_Type': row['Component_Type'] if 'Component_Type' in row else "Unknown",
+                            'Supplier': row['Supplier'] if 'Supplier' in row else "Unknown",
+                            'Component_Generation': row['Component_Generation'] if 'Component_Generation' in row else "Unknown",
+                            'Revision': row['Revision'] if 'Revision' in row else "Unknown",
+                            'MPN': row['MPN'] if 'MPN' in row else "Unknown"
+                        })
         
         if not result_parts:
             return "No matching parts found for the given process code"
@@ -429,8 +477,8 @@ def explain_process_code(process_code, segment):
     
     return "\n".join(explanation)
 
-def get_predefined_options():
-    options = {
+def get_predefined_options(component_validations_df):
+    default_options = {
         'segment': ["Client", "Server"],
         'supplier': ["ALPS", "ANPEC", "BOURNS", "DIODES", "LITTELFUSE", "MICRON", "MONTAGE", 
                     "MPS", "ONESEMI", "PANASONIC", "PULSE", "RAMBUS", "RENESAS", "RICHTEK", 
@@ -444,7 +492,59 @@ def get_predefined_options():
                     "R1.1", "R1.2", "R1.3", "R2", "R3.5", "R4.0", "R6.0", "R6.1", "R6.2", "X2"],
         'component_type': ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer", "CKD"]
     }
-    return options
+    
+    if not component_validations_df.empty:
+        try:
+            if 'Segment' in component_validations_df.columns:
+                segments = component_validations_df['Segment'].dropna().unique().tolist()
+                if segments:
+                    default_options['segment'] = sorted(list(set([s for s in segments if s])))
+            
+            if 'Supplier' in component_validations_df.columns:
+                suppliers = component_validations_df['Supplier'].dropna().unique().tolist()
+                if suppliers:
+                    default_options['supplier'] = sorted(list(set([s for s in suppliers if s])))
+            
+            if 'Component_Generation' in component_validations_df.columns:
+                gens = component_validations_df['Component_Generation'].dropna().unique().tolist()
+                if gens:
+                    default_options['component_generation'] = sorted(list(set([g for g in gens if g])))
+            
+            if 'Revision' in component_validations_df.columns:
+                revs = component_validations_df['Revision'].dropna().unique().tolist()
+                if revs:
+                    default_options['revision'] = sorted(list(set([r for r in revs if r])))
+            
+            if 'Component_Type' in component_validations_df.columns:
+                types = component_validations_df['Component_Type'].dropna().unique().tolist()
+                if types:
+                    default_options['component_type'] = sorted(list(set([t for t in types if t])))
+        
+        except Exception as e:
+            st.sidebar.warning(f"Error extracting options from data: {e}")
+    
+    return default_options
+
+def get_filtered_options(df, field, segment=None, supplier=None, component_type=None):
+    if df.empty or field not in df.columns:
+        return []
+    
+    filtered_df = df.copy()
+    
+    if segment and 'Segment' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
+    
+    if supplier and 'Supplier' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Supplier'].str.lower() == supplier.lower()]
+    
+    if component_type and 'Component_Type' in filtered_df.columns:
+        filtered_df = filtered_df[filtered_df['Component_Type'].str.lower() == component_type.lower()]
+    
+    if filtered_df.empty:
+        return []
+    
+    options = filtered_df[field].dropna().unique().tolist()
+    return sorted(list(set([o for o in options if o])))
 
 def main():
     st.title("Process Code & Part Specification Generator")
@@ -461,10 +561,10 @@ def main():
     
     data = load_data_from_sharepoint()
     
-    predefined_options = get_predefined_options()
-    
     component_validations_df = data['component_validations_df']
     module_validation_df = data['module_validation_df']
+    
+    predefined_options = get_predefined_options(component_validations_df)
     
     st.sidebar.info(f"Data last refreshed: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
     
@@ -479,15 +579,20 @@ def main():
         subtab1, subtab2 = st.tabs(["Component", "Module"])
         
         with subtab1:
-            st.write("Enter the component details to generate a process code:")
+            st.write("Enter the component details to generate a single component process code:")
             
             selected_segment = st.selectbox("Segment", options=predefined_options['segment'], key="segment_component")
             
-            selected_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="supplier_component")
+            supplier_options = get_filtered_options(component_validations_df, 'Supplier', segment=selected_segment) or predefined_options['supplier']
+            selected_supplier = st.selectbox("Supplier", options=supplier_options, key="supplier_component")
             
-            selected_component_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="component_gen")
+            gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                              segment=selected_segment, supplier=selected_supplier) or predefined_options['component_generation']
+            selected_component_gen = st.selectbox("Component Generation", options=gen_options, key="component_gen")
             
-            selected_revision = st.selectbox("Revision", options=predefined_options['revision'], key="revision_component")
+            rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                             segment=selected_segment, supplier=selected_supplier) or predefined_options['revision']
+            selected_revision = st.selectbox("Revision", options=rev_options, key="revision_component")
             
             if st.button("Generate Component Process Code"):
                 st.session_state.active_tab = "component_process_code"
@@ -515,13 +620,22 @@ def main():
                     st.session_state.code_details = None
         
         with subtab2:
-            st.write("Enter the module component details to generate a combined process code:")
+            st.write("Enter the module component details to generate a combined module process code:")
             
             st.subheader("PMIC")
             pmic_segment = st.selectbox("Segment", options=predefined_options['segment'], key="pmic_segment")
-            pmic_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="pmic_supplier")
-            pmic_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="pmic_gen")
-            pmic_rev = st.selectbox("Revision", options=predefined_options['revision'], key="pmic_rev")
+            
+            pmic_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                       segment=pmic_segment, component_type="PMIC") or predefined_options['supplier']
+            pmic_supplier = st.selectbox("Supplier", options=pmic_supplier_options, key="pmic_supplier")
+            
+            pmic_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                  segment=pmic_segment, supplier=pmic_supplier) or predefined_options['component_generation']
+            pmic_gen = st.selectbox("Component Generation", options=pmic_gen_options, key="pmic_gen")
+            
+            pmic_rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                 segment=pmic_segment, supplier=pmic_supplier) or predefined_options['revision']
+            pmic_rev = st.selectbox("Revision", options=pmic_rev_options, key="pmic_rev")
             
             pmic_code, _, _ = get_component_process_code(
                 pmic_segment, pmic_supplier, pmic_gen, pmic_rev, component_validations_df
@@ -533,9 +647,18 @@ def main():
             
             st.subheader("SPD/Hub")
             spd_segment = st.selectbox("Segment", options=predefined_options['segment'], key="spd_segment")
-            spd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="spd_supplier")
-            spd_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="spd_gen")
-            spd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="spd_rev")
+            
+            spd_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                      segment=spd_segment, component_type="SPD/Hub") or predefined_options['supplier']
+            spd_supplier = st.selectbox("Supplier", options=spd_supplier_options, key="spd_supplier")
+            
+            spd_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                 segment=spd_segment, supplier=spd_supplier) or predefined_options['component_generation']
+            spd_gen = st.selectbox("Component Generation", options=spd_gen_options, key="spd_gen")
+            
+            spd_rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                segment=spd_segment, supplier=spd_supplier) or predefined_options['revision']
+            spd_rev = st.selectbox("Revision", options=spd_rev_options, key="spd_rev")
             
             spd_code, _, _ = get_component_process_code(
                 spd_segment, spd_supplier, spd_gen, spd_rev, component_validations_df
@@ -547,12 +670,20 @@ def main():
             
             st.subheader("Temp Sensor")
             temp_segment = st.selectbox("Segment", options=predefined_options['segment'], key="temp_segment")
-            temp_supplier_options = predefined_options['supplier'] + ["None"]
+            
+            temp_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                       segment=temp_segment, component_type="Temp Sensor") or predefined_options['supplier']
+            temp_supplier_options = temp_supplier_options + ["None"]
             temp_supplier = st.selectbox("Supplier", options=temp_supplier_options, key="temp_supplier")
             
             if temp_supplier != "None":
-                temp_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="temp_gen")
-                temp_rev = st.selectbox("Revision", options=predefined_options['revision'], key="temp_rev")
+                temp_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                      segment=temp_segment, supplier=temp_supplier) or predefined_options['component_generation']
+                temp_gen = st.selectbox("Component Generation", options=temp_gen_options, key="temp_gen")
+                
+                temp_rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                     segment=temp_segment, supplier=temp_supplier) or predefined_options['revision']
+                temp_rev = st.selectbox("Revision", options=temp_rev_options, key="temp_rev")
                 
                 temp_code, _, _ = get_component_process_code(
                     temp_segment, temp_supplier, temp_gen, temp_rev, component_validations_df
@@ -566,9 +697,18 @@ def main():
             
             st.subheader("RCD/MRCD")
             rcd_segment = st.selectbox("Segment", options=predefined_options['segment'], key="rcd_segment")
-            rcd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="rcd_supplier")
-            rcd_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="rcd_gen")
-            rcd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="rcd_rev")
+            
+            rcd_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                      segment=rcd_segment, component_type="RCD/MRCD") or predefined_options['supplier']
+            rcd_supplier = st.selectbox("Supplier", options=rcd_supplier_options, key="rcd_supplier")
+            
+            rcd_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                 segment=rcd_segment, supplier=rcd_supplier) or predefined_options['component_generation']
+            rcd_gen = st.selectbox("Component Generation", options=rcd_gen_options, key="rcd_gen")
+            
+            rcd_rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                segment=rcd_segment, supplier=rcd_supplier) or predefined_options['revision']
+            rcd_rev = st.selectbox("Revision", options=rcd_rev_options, key="rcd_rev")
             
             rcd_code, _, _ = get_component_process_code(
                 rcd_segment, rcd_supplier, rcd_gen, rcd_rev, component_validations_df
@@ -578,14 +718,22 @@ def main():
             else:
                 st.error(f"RCD/MRCD Process Code: {rcd_code}")
             
-            st.subheader("Data Buffer (Optional)")
+            st.subheader("Data Buffer")
             db_segment = st.selectbox("Segment", options=predefined_options['segment'], key="db_segment")
-            db_supplier_options = predefined_options['supplier'] + ["None"]
+            
+            db_supplier_options = get_filtered_options(component_validations_df, 'Supplier',
+                                                                                                            segment=db_segment, component_type="Data Buffer") or predefined_options['supplier']
+            db_supplier_options = db_supplier_options + ["None"]
             db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
             
             if db_supplier != "None":
-                db_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="db_gen")
-                db_rev = st.selectbox("Revision", options=predefined_options['revision'], key="db_rev")
+                db_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                    segment=db_segment, supplier=db_supplier) or predefined_options['component_generation']
+                db_gen = st.selectbox("Component Generation", options=db_gen_options, key="db_gen")
+                
+                db_rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                   segment=db_segment, supplier=db_supplier) or predefined_options['revision']
+                db_rev = st.selectbox("Revision", options=db_rev_options, key="db_rev")
                 
                 db_code, _, _ = get_component_process_code(
                     db_segment, db_supplier, db_gen, db_rev, component_validations_df
@@ -600,7 +748,6 @@ def main():
             if st.button("Generate Module Process Code"):
                 st.session_state.active_tab = "module_process_code"
                 
-                # Use the segment from PMIC as the overall module segment
                 selected_segment = pmic_segment
                 part.set_segment(selected_segment)
                 
