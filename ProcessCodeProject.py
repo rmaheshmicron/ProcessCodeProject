@@ -191,12 +191,13 @@ def load_data_from_sharepoint():
         field_mapping = {
             'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market'])), 'Segment'),
             'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
-            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['generation', 'gen', 'componentgen', 'component generation'])), None),
-            'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None),
-            'Component_Type': next((f for f in field_names if any(term in f.lower() for term in ['component type', 'componenttype', 'type', 'component'])), None),
-            'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), None),
-            'MPN': next((f for f in field_names if any(term in f.lower() for term in ['mpn', 'part number', 'partnumber'])), None)
+            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['family', 'product family'])), 'Product_x0020_Family'),
+            'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), 'REV'),
+            'Component_Type': 'Title',  # Assuming 'Title' contains the component type
+            'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), 'Process_x0020_Code'),
+            'MPN': next((f for f in field_names if any(term in f.lower() for term in ['mpn', 'part number', 'partnumber'])), 'Supplier_x0020_PN')
         }
+
         
         with st.sidebar.expander("Field Mapping", expanded=False):
             st.write(field_mapping)
