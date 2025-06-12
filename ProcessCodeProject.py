@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from io import StringIO
 import requests
 from urllib.parse import urlparse, quote
 from datetime import datetime
@@ -972,7 +973,16 @@ def main():
                         parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
                         if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
                             st.subheader("Component Details")
-                            st.text(parts_lookup)
+                            # Convert the parts_lookup string to a DataFrame
+                            parts_df = pd.read_csv(StringIO(parts_lookup), sep='\s+')
+                            
+                            # Capitalize all string columns
+                            for col in parts_df.columns:
+                                if parts_df[col].dtype == 'object':
+                                    parts_df[col] = parts_df[col].str.upper()
+                            
+                            # Display the DataFrame as a table
+                            st.table(parts_df)
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
