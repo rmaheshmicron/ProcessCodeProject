@@ -178,7 +178,8 @@ def load_data_from_sharepoint():
     
     try:
         # Set up MSAL authentication
-        authority = "https://login.microsoftonline.com/common"
+        # Change from /common to /organizations endpoint
+        authority = f"https://login.microsoftonline.com/{tenant}.onmicrosoft.com"
         scope = [f"https://{tenant}.sharepoint.com/.default"]
         
         # Client ID for Microsoft Office (this is a well-known client ID for Office applications)
