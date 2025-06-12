@@ -791,30 +791,20 @@ def main():
             selected_revision = st.selectbox("Revision", options=rev_options, key="revision_component")
             
             if st.button("Generate Component Process Code"):
-                st.session_state.active_tab = "component_process_code"
-                
-                part.set_segment(selected_segment)
-                part.set_supplier(selected_supplier)
-                part.set_component_gen(selected_component_gen)
-                part.set_revision(selected_revision)
-                
                 process_code, component_type, code_details = get_component_process_code(
                     selected_segment, selected_supplier, selected_component_gen, selected_revision, 
                     selected_component_type, component_validations_df
                 )
                 
                 if isinstance(process_code, str) and not process_code.startswith("No matching") and not process_code.startswith("Error"):
-                    result_text = f"Generated Process Code: {process_code}\nComponent Type: {component_type}"
+                    st.success(f"Generated Process Code: {process_code}")
+                    st.info(f"Component Type: {component_type}")
+                    
+                    if code_details is not None and not code_details.empty:
+                        st.subheader("Component Details")
+                        st.dataframe(code_details)
                 else:
-                    result_text = process_code
-                
-                st.session_state.result = result_text
-                st.session_state.show_result = True
-                
-                if code_details is not None and not code_details.empty:
-                    st.session_state.code_details = code_details
-                else:
-                    st.session_state.code_details = None
+                    st.error(process_code)
         
         with subtab2:
             st.write("Enter the module component details to generate a combined module process code:")
