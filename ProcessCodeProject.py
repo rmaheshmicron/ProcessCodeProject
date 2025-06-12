@@ -62,25 +62,25 @@ def show_process_code_info():
         
         Process codes are used to identify the specific components used in a module. The structure varies by segment:
         
-        ### Server Process Code (4-5 characters)
+        ### Server Process Code (4-5 Characters)
         1. PMIC
         2. SPD/Hub
         3. Temp Sensor
         4. RCD/MRCD
-        5. Data Buffer (optional)
+        5. Data Buffer (Optional)
         
-        ### Client Process Code (2-3 characters)
+        ### Client Process Code (2-3 Characters)
         1. PMIC
         2. SPD/Hub
-        3. CKD (optional)
+        3. CKD (Optional)
         
         ## Print Order on Product Label
         
         ### Server
-        PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer (if applicable)
+        PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer (If applicable)
         
         ### Client
-        PMIC → SPD/Hub → CKD (if applicable)
+        PMIC → SPD/Hub → CKD (If applicable)
         """)
 
 @st.cache_data(ttl=3600)
@@ -298,22 +298,25 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         df = component_validations_df.copy()
         
-        for col in ['Segment', 'Supplier', 'Component_Generation', 'Revision', 'Component_Type']:
-            if col in df.columns:
+        # Convert all string columns to lowercase for case-insensitive comparison
+        for col in df.columns:
+            if df[col].dtype == 'object':
                 df[col] = df[col].str.lower()
         
+        # Create filters based on provided parameters
         filters = []
         if segment and 'Segment' in df.columns:
-            filters.append(df['Segment'] == segment.lower())
+            filters.append(df['Segment'].str.lower() == segment.lower())
         if supplier and 'Supplier' in df.columns:
-            filters.append(df['Supplier'] == supplier.lower())
+            filters.append(df['Supplier'].str.lower() == supplier.lower())
         if component_gen and 'Component_Generation' in df.columns:
-            filters.append(df['Component_Generation'] == component_gen.lower())
+            filters.append(df['Component_Generation'].str.lower() == component_gen.lower())
         if revision and 'Revision' in df.columns:
-            filters.append(df['Revision'] == revision.lower())
+            filters.append(df['Revision'].str.lower() == revision.lower())
         if component_type and 'Component_Type' in df.columns:
-            filters.append(df['Component_Type'] == component_type.lower())
+            filters.append(df['Component_Type'].str.lower() == component_type.lower())
         
+        # Apply all filters
         if filters:
             filtered_df = df.copy()
             for f in filters:
@@ -321,18 +324,19 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         else:
             filtered_df = df.copy()
         
+        # If no exact matches, try partial matching
         if filtered_df.empty:
             relaxed_filters = []
             if segment and 'Segment' in df.columns:
-                relaxed_filters.append(df['Segment'].str.contains(segment.lower()))
+                relaxed_filters.append(df['Segment'].str.contains(segment.lower(), na=False))
             if supplier and 'Supplier' in df.columns:
-                relaxed_filters.append(df['Supplier'].str.contains(supplier.lower()))
+                relaxed_filters.append(df['Supplier'].str.contains(supplier.lower(), na=False))
             if component_gen and 'Component_Generation' in df.columns:
-                relaxed_filters.append(df['Component_Generation'].str.contains(component_gen.lower()))
+                relaxed_filters.append(df['Component_Generation'].str.contains(component_gen.lower(), na=False))
             if revision and 'Revision' in df.columns:
-                relaxed_filters.append(df['Revision'].str.contains(revision.lower()))
+                relaxed_filters.append(df['Revision'].str.contains(revision.lower(), na=False))
             if component_type and 'Component_Type' in df.columns:
-                relaxed_filters.append(df['Component_Type'].str.contains(component_type.lower()))
+                relaxed_filters.append(df['Component_Type'].str.contains(component_type.lower(), na=False))
             
             if relaxed_filters:
                 filtered_df = df.copy()
@@ -340,9 +344,70 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                     filtered_df = filtered_df[f]
             
             if filtered_df.empty:
-                return "No matching process code found for the given criteria", None, None
+                # If still no matches, try even more relaxed matching on component type
+                if component_type and 'Component_Type' in df.columns:
+                    component_type_lower = component_type.lower()
+                    # Map common component type variations
+                    type_variations = {
+                        'pmic': ['pmic', 'power', 'power management'],
+                        'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
+                        'temp sensor': ['temp', 'sensor', 'temperature', 'temp sensor'],
+                        'rcd/mrcd': ['rcd', 'mrcd', 'register', 'registering clock driver'],
+                        'data buffer': ['buffer', 'data buffer', 'db'],
+                        'ckd': ['ckd', 'clock driver']
+                    }
+                    
+                    for key, variations in type_variations.items():
+                        if any(var in component_type_lower for var in variations):
+                            component_matches = df[df['Component_Type'].str.contains('|'.join(variations), na=False)]
+                            if not component_matches.empty:
+                                filtered_df = component_matches
+                                break
+                
+                if filtered_df.empty:
+                    return "No matching process code found for the given criteria", None, None
         
-        process_code = filtered_df.iloc[0]['Process_Code']
+        # Check if Process_Code column exists and has values
+        if 'Process_Code' not in filtered_df.columns or filtered_df['Process_Code'].isna().all():
+            return "Process code information not available in the data", None, None
+        
+        # Get the process code - should be a single character
+        process_codes = filtered_df['Process_Code'].dropna().unique()
+        
+        if len(process_codes) == 0:
+            return "No process code found for the given criteria", None, None
+        
+        # If multiple process codes found, try to select the most appropriate one
+        process_code = process_codes[0]
+        
+        # If process code is longer than one character, try to extract the relevant character
+        if len(process_code) > 1:
+            # For client components
+            if segment.lower() == 'client':
+                if component_type.lower() in ['pmic', 'power management']:
+                    process_code = process_code[0]  # First character for PMIC
+                elif component_type.lower() in ['spd/hub', 'spd', 'hub']:
+                    process_code = process_code[0]  # First character for SPD/Hub
+                elif component_type.lower() in ['ckd', 'clock driver']:
+                    process_code = process_code[0]  # First character for CKD
+            
+            # For server components
+            elif segment.lower() == 'server':
+                if component_type.lower() in ['pmic', 'power management']:
+                    process_code = process_code[0]  # First character for PMIC
+                elif component_type.lower() in ['spd/hub', 'spd', 'hub']:
+                    process_code = process_code[0]  # First character for SPD/Hub
+                elif component_type.lower() in ['temp sensor', 'temperature', 'temp']:
+                    process_code = process_code[0]  # First character for Temp Sensor
+                elif component_type.lower() in ['rcd/mrcd', 'rcd', 'mrcd', 'register']:
+                    process_code = process_code[0]  # First character for RCD/MRCD
+                elif component_type.lower() in ['data buffer', 'buffer', 'db']:
+                    process_code = process_code[0]  # First character for Data Buffer
+            
+            # If we couldn't determine which character to use, just take the first one
+            if len(process_code) > 1:
+                process_code = process_code[0]
+        
         component_type_result = filtered_df.iloc[0]['Component_Type'] if 'Component_Type' in filtered_df.columns else "Unknown"
         
         return process_code, component_type_result, filtered_df
