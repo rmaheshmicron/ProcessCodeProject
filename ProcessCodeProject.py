@@ -444,11 +444,11 @@ def filter_module_process_code(segment, form_factor, speed, module_validation_df
         if filtered_df.empty:
             relaxed_filters = []
             if segment and 'Segment' in df.columns:
-                relaxed_filters.append(df['Segment'].str.contains(segment.lower()))
+                relaxed_filters.append(df['Segment'].str.contains(segment.lower(), na=False))
             if form_factor and 'Form_Factor' in df.columns:
-                relaxed_filters.append(df['Form_Factor'].str.contains(form_factor.lower()))
+                relaxed_filters.append(df['Form_Factor'].str.contains(form_factor.lower(), na=False))
             if speed and 'Speed' in df.columns:
-                relaxed_filters.append(df['Speed'].str.contains(speed.lower()))
+                relaxed_filters.append(df['Speed'].str.contains(speed.lower(), na=False))
             
             if relaxed_filters:
                 filtered_df = df.copy()
@@ -610,30 +610,77 @@ def get_predefined_options(component_validations_df):
     
     if not component_validations_df.empty:
         try:
-            if 'Segment' in component_validations_df.columns:
-                segments = component_validations_df['Segment'].dropna().unique().tolist()
-                if segments:
-                    default_options['segment'] = sorted(list(set([s for s in segments if s])))
+            # Ensure we only have valid segments
+            default_options['segment'] = ["Client", "Server"]
             
             if 'Supplier' in component_validations_df.columns:
                 suppliers = component_validations_df['Supplier'].dropna().unique().tolist()
                 if suppliers:
-                    default_options['supplier'] = sorted(list(set([s for s in suppliers if s])))
+                    # Clean up supplier names
+                    cleaned_suppliers = []
+                    for supplier in suppliers:
+                        if supplier and supplier.strip() and supplier.strip() not in cleaned_suppliers:
+                            cleaned_suppliers.append(supplier.strip())
+                    
+                    if cleaned_suppliers:
+                        default_options['supplier'] = sorted(cleaned_suppliers)
             
             if 'Component_Generation' in component_validations_df.columns:
                 gens = component_validations_df['Component_Generation'].dropna().unique().tolist()
                 if gens:
-                    default_options['component_generation'] = sorted(list(set([g for g in gens if g])))
+                    # Clean up generation values
+                    cleaned_gens = []
+                    for gen in gens:
+                        if gen and gen.strip() and gen.strip() not in cleaned_gens:
+                            cleaned_gens.append(gen.strip())
+                    
+                    if cleaned_gens:
+                        default_options['component_generation'] = sorted(cleaned_gens)
             
             if 'Revision' in component_validations_df.columns:
                 revs = component_validations_df['Revision'].dropna().unique().tolist()
                 if revs:
-                    default_options['revision'] = sorted(list(set([r for r in revs if r])))
+                    # Clean up revision values
+                    cleaned_revs = []
+                    for rev in revs:
+                        if rev and rev.strip() and rev.strip() not in cleaned_revs:
+                            cleaned_revs.append(rev.strip())
+                    
+                    if cleaned_revs:
+                        default_options['revision'] = sorted(cleaned_revs)
             
             if 'Component_Type' in component_validations_df.columns:
                 types = component_validations_df['Component_Type'].dropna().unique().tolist()
                 if types:
-                    default_options['component_type'] = sorted(list(set([t for t in types if t])))
+                    # Clean up component types and ensure we only have the standard types
+                    standard_types = ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer", "CKD"]
+                    
+                    # Map variations to standard types
+                    type_mapping = {
+                        'pmic': "PMIC",
+                        'power': "PMIC",
+                        'power management': "PMIC",
+                        'spd': "SPD/Hub",
+                        'hub': "SPD/Hub",
+                        'spd/hub': "SPD/Hub",
+                        'serial presence detect': "SPD/Hub",
+                        'temp': "Temp Sensor",
+                        'sensor': "Temp Sensor",
+                        'temperature': "Temp Sensor",
+                        'temp sensor': "Temp Sensor",
+                        'rcd': "RCD/MRCD",
+                        'mrcd': "RCD/MRCD",
+                        'register': "RCD/MRCD",
+                        'registering clock driver': "RCD/MRCD",
+                        'buffer': "Data Buffer",
+                        'data buffer': "Data Buffer",
+                        'db': "Data Buffer",
+                        'ckd': "CKD",
+                        'clock driver': "CKD"
+                    }
+                    
+                    # Keep only the standard component types
+                    default_options['component_type'] = standard_types
         
         except Exception as e:
             st.sidebar.warning(f"Error extracting options from data: {e}")
@@ -646,6 +693,12 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     
     filtered_df = df.copy()
     
+    # Convert all string columns to lowercase for case-insensitive comparison
+    for col in filtered_df.columns:
+        if filtered_df[col].dtype == 'object':
+            filtered_df[col] = filtered_df[col].str.lower()
+    
+    # Apply filters
     if segment and 'Segment' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
     
@@ -653,13 +706,40 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
         filtered_df = filtered_df[filtered_df['Supplier'].str.lower() == supplier.lower()]
     
     if component_type and 'Component_Type' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Component_Type'].str.lower() == component_type.lower()]
+        # Handle variations in component type naming
+        component_type_lower = component_type.lower()
+        type_variations = {
+            'pmic': ['pmic', 'power', 'power management'],
+            'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
+            'temp sensor': ['temp', 'sensor', 'temperature', 'temp sensor'],
+            'rcd/mrcd': ['rcd', 'mrcd', 'register', 'registering clock driver'],
+            'data buffer': ['buffer', 'data buffer', 'db'],
+            'ckd': ['ckd', 'clock driver']
+        }
+        
+        for key, variations in type_variations.items():
+            if any(var in component_type_lower for var in variations):
+                filtered_df = filtered_df[filtered_df['Component_Type'].str.contains('|'.join(variations), na=False)]
+                break
     
     if filtered_df.empty:
         return []
     
+    # Get unique values for the requested field
     options = filtered_df[field].dropna().unique().tolist()
-    return sorted(list(set([o for o in options if o])))
+    
+    # Clean up options - remove empty strings and duplicates
+    cleaned_options = []
+    for option in options:
+        if option and option not in cleaned_options:
+            cleaned_options.append(option)
+    
+    # For segment field, ensure we only return Client or Server
+    if field == 'Segment':
+        valid_segments = ["Client", "Server"]
+        cleaned_options = [opt.title() for opt in cleaned_options if opt.lower() in [s.lower() for s in valid_segments]]
+    
+    return sorted(cleaned_options)
 
 def main():
     st.title("Process Code & Part Specification Generator")
