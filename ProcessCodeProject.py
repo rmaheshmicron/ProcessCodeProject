@@ -4,6 +4,9 @@ import requests
 from urllib.parse import urlparse, quote
 import msal
 from datetime import datetime
+from office365.runtime.auth.user_credential import UserCredential
+from office365.sharepoint.client_context import ClientContext
+from office365.sharepoint.listitems.caml.query import CamlQuery
 
 class PartSpecification:
     def __init__(self):
@@ -89,10 +92,6 @@ def load_data_from_sharepoint():
     
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
     list_name = "Module HW Design Component Validations"
-    
-    from office365.runtime.auth.user_credential import UserCredential
-    from office365.sharepoint.client_context import ClientContext
-    from office365.sharepoint.listitems.caml.caml_query import CamlQuery
     
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
         username = st.secrets["sharepoint_username"]
