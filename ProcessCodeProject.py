@@ -806,9 +806,8 @@ def main():
                             if code_details[col].dtype == 'object':
                                 code_details[col] = code_details[col].str.upper()
                         
-                        # Convert the DataFrame to a string representation
-                        code_details_str = code_details.to_string(index=False)
-                        st.text(code_details_str)
+                        # Display the DataFrame as a table
+                        st.table(code_details)
                 else:
                     st.error(process_code)
         
