@@ -189,25 +189,32 @@ def load_data_from_sharepoint():
         component_validations_data = []
         
         field_mapping = {
-            'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market'])), 'Segment'),
-            'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
-            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['family_x0020_description', 'gen', 'componentgen', 'component generation'])), None),
-            'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None),
-            'Component_Type': next((f for f in field_names if any(term in f.lower() for term in ['title', 'componenttype', 'type', 'component'])), None),
-            'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), None),
-            'MPN': next((f for f in field_names if any(term in f.lower() for term in ['mpn', 'part number', 'partnumber'])), None)
+            'Segment': 'Segment',
+            'Supplier': 'Supplier',
+            'Component_Generation': 'Family_x0020_Description',
+            'Revision': 'REV',
+            'Component_Type': 'Title',
+            'Process_Code': 'Process_x0020_Code',
+            'MPN': 'Supplier_x0020_PN'
         }
         
         with st.sidebar.expander("Field Mapping", expanded=False):
             st.write(field_mapping)
         
+        valid_component_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
+
         for item in all_items:
             item_properties = item.properties
             
             record = {}
             for key, field in field_mapping.items():
                 if field and field in item_properties:
-                    record[key] = str(item_properties[field])
+                    if key == 'Component_Type':
+                        # Extract the exact component type from the Title field
+                        title = str(item_properties[field])
+                        record[key] = next((ct for ct in valid_component_types if ct in title), "Unknown")
+                    else:
+                        record[key] = str(item_properties[field])
                 else:
                     record[key] = ""
             
@@ -216,18 +223,20 @@ def load_data_from_sharepoint():
                     if prop_key not in ['_ObjectType_', '_ObjectIdentity_', 'FileSystemObjectType', 'ServerRedirectedEmbedUri', 
                                        'ServerRedirectedEmbedUrl', 'ContentTypeId', 'ComplianceAssetId', 'OData__UIVersionString']:
                         if prop_key == 'Title':
+                            # Extract the exact component type from the Title field
+                            title = str(prop_value)
+                            record['Component_Type'] = next((ct for ct in valid_component_types if ct in title), "Unknown")
+                        elif prop_key == 'Segment':
                             record['Segment'] = str(prop_value)
-                        elif 'supplier' in prop_key.lower():
+                        elif prop_key == 'Supplier':
                             record['Supplier'] = str(prop_value)
-                        elif 'gen' in prop_key.lower():
+                        elif prop_key == 'Family_x0020_Description':
                             record['Component_Generation'] = str(prop_value)
-                        elif 'rev' in prop_key.lower():
+                        elif prop_key == 'REV':
                             record['Revision'] = str(prop_value)
-                        elif 'type' in prop_key.lower():
-                            record['Component_Type'] = str(prop_value)
-                        elif 'code' in prop_key.lower():
+                        elif prop_key == 'Process_x0020_Code':
                             record['Process_Code'] = str(prop_value)
-                        elif 'mpn' in prop_key.lower() or 'part' in prop_key.lower():
+                        elif prop_key == 'Supplier_x0020_PN':
                             record['MPN'] = str(prop_value)
             
             if record.get('Segment') and (record.get('Supplier') or record.get('Component_Type') or record.get('Process_Code')):
@@ -245,13 +254,13 @@ def load_data_from_sharepoint():
         
         module_field_mapping = {
             'Segment': field_mapping['Segment'],
-            'Form_Factor': next((f for f in field_names if any(term in f.lower() for term in ['form factor', 'formfactor', 'form'])), None),
-            'Speed': next((f for f in field_names if any(term in f.lower() for term in ['speed', 'frequency', 'mhz'])), None),
-            'PMIC': next((f for f in field_names if any(term in f.lower() for term in ['pmic', 'power'])), None),
-            'SPD_Hub': next((f for f in field_names if any(term in f.lower() for term in ['spd', 'hub', 'spdhub'])), None),
-            'Temp_Sensor': next((f for f in field_names if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None),
-            'RCD_MRCD': next((f for f in field_names if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None),
-            'Data_Buffer': next((f for f in field_names if any(term in f.lower() for term in ['data buffer', 'databuffer', 'buffer'])), None),
+            'Form_Factor': 'Product_x0020_Family',
+            'Speed': 'Product_x0020_Comment',
+            'PMIC': 'Process_x0020_Code_x0020_Char',
+            'SPD_Hub': 'Process_x0020_Code_x0020_Char',
+            'Temp_Sensor': 'Process_x0020_Code_x0020_Char',
+            'RCD_MRCD': 'Process_x0020_Code_x0020_Char',
+            'Data_Buffer': 'Process_x0020_Code_x0020_Char',
             'Process_Code': field_mapping['Process_Code']
         }
         
@@ -261,7 +270,16 @@ def load_data_from_sharepoint():
             record = {}
             for key, field in module_field_mapping.items():
                 if field and field in item_properties:
-                    record[key] = str(item_properties[field])
+                    if key in ['PMIC', 'SPD_Hub', 'Temp_Sensor', 'RCD_MRCD', 'Data_Buffer']:
+                        process_code_chars = str(item_properties[field])
+                        if len(process_code_chars) >= 5:
+                            record['PMIC'] = process_code_chars[0]
+                            record['SPD_Hub'] = process_code_chars[1]
+                            record['Temp_Sensor'] = process_code_chars[2]
+                            record['RCD_MRCD'] = process_code_chars[3]
+                            record['Data_Buffer'] = process_code_chars[4] if len(process_code_chars) > 4 else ''
+                    else:
+                        record[key] = str(item_properties[field])
                 else:
                     record[key] = ""
             
