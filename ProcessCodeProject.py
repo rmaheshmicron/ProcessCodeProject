@@ -519,103 +519,86 @@ def main():
             
             selected_segment = st.selectbox("Segment", options=predefined_options['segment'], key="segment_module")
             
-            col1, col2 = st.columns(2)
+            st.subheader("PMIC")
+            pmic_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="pmic_supplier")
+            pmic_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="pmic_gen")
+            pmic_rev = st.selectbox("Revision", options=predefined_options['revision'], key="pmic_rev")
             
-            with col1:
-                st.subheader("PMIC")
-                
-                pmic_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="pmic_supplier")
-                
-                pmic_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="pmic_gen")
-                
-                pmic_rev = st.selectbox("Revision", options=predefined_options['revision'], key="pmic_rev")
-                
-                pmic_code, _, _ = get_component_process_code(
-                    selected_segment, pmic_supplier, pmic_gen, pmic_rev, component_validations_df
-                )
-                if isinstance(pmic_code, str) and not pmic_code.startswith("No matching") and not pmic_code.startswith("Error"):
-                    st.success(f"PMIC Process Code: {pmic_code}")
-                else:
-                    st.error(f"PMIC Process Code: {pmic_code}")
-                
-                st.subheader("Temp Sensor")
-                
-                temp_supplier_options = predefined_options['supplier'] + ["None"]
-                temp_supplier = st.selectbox("Supplier", options=temp_supplier_options, key="temp_supplier")
-                
-                if temp_supplier != "None":
-                    temp_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="temp_gen")
-                    
-                    temp_rev = st.selectbox("Revision", options=predefined_options['revision'], key="temp_rev")
-                    
-                    temp_code, _, _ = get_component_process_code(
-                        selected_segment, temp_supplier, temp_gen, temp_rev, component_validations_df
-                    )
-                    if isinstance(temp_code, str) and not temp_code.startswith("No matching") and not temp_code.startswith("Error"):
-                        st.success(f"Temp Sensor Process Code: {temp_code}")
-                    else:
-                        st.error(f"Temp Sensor Process Code: {temp_code}")
-                else:
-                    temp_code = ""
+            pmic_code, _, _ = get_component_process_code(
+                selected_segment, pmic_supplier, pmic_gen, pmic_rev, component_validations_df
+            )
+            if isinstance(pmic_code, str) and not pmic_code.startswith("No matching") and not pmic_code.startswith("Error"):
+                st.success(f"PMIC Process Code: {pmic_code}")
+            else:
+                st.error(f"PMIC Process Code: {pmic_code}")
             
-            with col2:
-                st.subheader("SPD/Hub")
+            st.subheader("SPD/Hub")
+            spd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="spd_supplier")
+            spd_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="spd_gen")
+            spd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="spd_rev")
+            
+            spd_code, _, _ = get_component_process_code(
+                selected_segment, spd_supplier, spd_gen, spd_rev, component_validations_df
+            )
+            if isinstance(spd_code, str) and not spd_code.startswith("No matching") and not spd_code.startswith("Error"):
+                st.success(f"SPD/Hub Process Code: {spd_code}")
+            else:
+                st.error(f"SPD/Hub Process Code: {spd_code}")
+            
+            st.subheader("Temp Sensor")
+            temp_supplier_options = predefined_options['supplier'] + ["None"]
+            temp_supplier = st.selectbox("Supplier", options=temp_supplier_options, key="temp_supplier")
+            
+            if temp_supplier != "None":
+                temp_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="temp_gen")
+                temp_rev = st.selectbox("Revision", options=predefined_options['revision'], key="temp_rev")
                 
-                spd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="spd_supplier")
-                
-                spd_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="spd_gen")
-                
-                spd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="spd_rev")
-                
-                spd_code, _, _ = get_component_process_code(
-                    selected_segment, spd_supplier, spd_gen, spd_rev, component_validations_df
+                temp_code, _, _ = get_component_process_code(
+                    selected_segment, temp_supplier, temp_gen, temp_rev, component_validations_df
                 )
-                if isinstance(spd_code, str) and not spd_code.startswith("No matching") and not spd_code.startswith("Error"):
-                    st.success(f"SPD/Hub Process Code: {spd_code}")
+                if isinstance(temp_code, str) and not temp_code.startswith("No matching") and not temp_code.startswith("Error"):
+                    st.success(f"Temp Sensor Process Code: {temp_code}")
                 else:
-                    st.error(f"SPD/Hub Process Code: {spd_code}")
+                    st.error(f"Temp Sensor Process Code: {temp_code}")
+            else:
+                temp_code = ""
+            
+            if selected_segment.lower() == 'server':
+                st.subheader("RCD/MRCD")
+                rcd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="rcd_supplier")
+                rcd_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="rcd_gen")
+                rcd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="rcd_rev")
                 
-                if selected_segment.lower() == 'server':
-                    st.subheader("RCD/MRCD")
+                rcd_code, _, _ = get_component_process_code(
+                    selected_segment, rcd_supplier, rcd_gen, rcd_rev, component_validations_df
+                )
+                if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error"):
+                    st.success(f"RCD/MRCD Process Code: {rcd_code}")
+                else:
+                    st.error(f"RCD/MRCD Process Code: {rcd_code}")
+            else:
+                rcd_code = ""
+            
+            if selected_segment.lower() == 'server':
+                st.subheader("Data Buffer (Optional)")
+                db_supplier_options = predefined_options['supplier'] + ["None"]
+                db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
+                
+                if db_supplier != "None":
+                    db_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="db_gen")
+                    db_rev = st.selectbox("Revision", options=predefined_options['revision'], key="db_rev")
                     
-                    rcd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="rcd_supplier")
-                    
-                    rcd_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="rcd_gen")
-                    
-                    rcd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="rcd_rev")
-                    
-                    rcd_code, _, _ = get_component_process_code(
-                        selected_segment, rcd_supplier, rcd_gen, rcd_rev, component_validations_df
+                    db_code, _, _ = get_component_process_code(
+                        selected_segment, db_supplier, db_gen, db_rev, component_validations_df
                     )
-                    if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error"):
-                        st.success(f"RCD/MRCD Process Code: {rcd_code}")
+                    if isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error"):
+                        st.success(f"Data Buffer Process Code: {db_code}")
                     else:
-                        st.error(f"RCD/MRCD Process Code: {rcd_code}")
-                else:
-                    rcd_code = ""
-                
-                if selected_segment.lower() == 'server':
-                    st.subheader("Data Buffer (Optional)")
-                    
-                    db_supplier_options = predefined_options['supplier'] + ["None"]
-                    db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
-                    
-                    if db_supplier != "None":
-                        db_gen = st.selectbox("Component Generation", options=predefined_options['component_generation'], key="db_gen")
-                        
-                        db_rev = st.selectbox("Revision", options=predefined_options['revision'], key="db_rev")
-                        
-                        db_code, _, _ = get_component_process_code(
-                            selected_segment, db_supplier, db_gen, db_rev, component_validations_df
-                        )
-                        if isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error"):
-                            st.success(f"Data Buffer Process Code: {db_code}")
-                        else:
-                            st.error(f"Data Buffer Process Code: {db_code}")
-                    else:
-                        db_code = ""
+                        st.error(f"Data Buffer Process Code: {db_code}")
                 else:
                     db_code = ""
+            else:
+                db_code = ""
             
             if st.button("Generate Module Process Code"):
                 st.session_state.active_tab = "module_process_code"
