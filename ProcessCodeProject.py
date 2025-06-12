@@ -538,10 +538,11 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
                     result_parts.append({
                         'Position': i + 1,
                         'Process Code': code,
-                        'Component Type': row.get('Component_Type', "Unknown"),
+                        'Segment': row.get('Segment', "Unknown"),
                         'Supplier': row.get('Supplier', "Unknown"),
                         'Component Generation': row.get('Component_Generation', "Unknown"),
                         'Revision': row.get('Revision', "Unknown"),
+                        'Component Type': row.get('Component_Type', "Unknown"),
                         'MPN': row.get('MPN', "Unknown")
                     })
         
@@ -552,12 +553,12 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
         result_df = result_df.sort_values('Position')
         
         # Ensure all columns are present, even if empty
-        for col in ['Position', 'Process Code', 'Component Type', 'Supplier', 'Component Generation', 'Revision', 'MPN']:
+        for col in ['Position', 'Process Code', 'Segment', 'Supplier', 'Component Generation', 'Revision', 'Component Type', 'MPN']:
             if col not in result_df.columns:
                 result_df[col] = ""
         
         # Reorder columns
-        result_df = result_df[['Position', 'Process Code', 'Component Type', 'Supplier', 'Component Generation', 'Revision', 'MPN']]
+        result_df = result_df[['Position', 'Process Code', 'Segment', 'Supplier', 'Component Generation', 'Revision', 'Component Type', 'MPN']]
         
         return result_df
     
@@ -970,8 +971,14 @@ def main():
                             for col in parts_lookup.columns:
                                 parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
     
-                            # Display the DataFrame as a table
-                            st.table(parts_lookup)
+                            # Display the DataFrame as a table with adjusted column widths
+                            st.dataframe(parts_lookup.style.set_properties(**{
+                                'white-space': 'pre-wrap',
+                                'text-align': 'left'
+                            }).set_table_styles([
+                                {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
+                                {'selector': 'td', 'props': [('text-align', 'left')]}
+                            ]), height=400)  # Adjust the height as needed
                         else:
                             st.warning(str(parts_lookup))
     
