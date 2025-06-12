@@ -974,21 +974,20 @@ def main():
                             st.subheader("Component Details")
                             # Convert the parts_lookup string to a DataFrame
                             try:
-                        parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
-                        if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
-                            st.subheader("Component Details")
-                            try:
                                 parts_lines = parts_lookup.split('\n')
                                 if len(parts_lines) > 1:
-                                    # Extract headers and data separately
                                     headers = parts_lines[0].split()
                                     data = [line.split() for line in parts_lines[1:] if line.strip()]
                                     
-                                    # Ensure all rows have the same number of columns as the header
-                                    max_cols = len(headers)
-                                    data = [row[:max_cols] + [''] * (max_cols - len(row)) for row in data]
+                                    # Ensure data and headers have the same number of columns
+                                    max_columns = max(len(headers), max(len(row) for row in data))
+                                    headers = headers + [''] * (max_columns - len(headers))
+                                    data = [row + [''] * (max_columns - len(row)) for row in data]
                                     
                                     parts_df = pd.DataFrame(data, columns=headers)
+                                    
+                                    # Remove empty columns
+                                    parts_df = parts_df.dropna(axis=1, how='all')
                                     
                                     # Capitalize all string columns
                                     for col in parts_df.columns:
