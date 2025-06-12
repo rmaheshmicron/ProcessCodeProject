@@ -135,7 +135,7 @@ def load_data_from_sharepoint():
         
         with st.sidebar.expander("Available Fields", expanded=False):
             st.write(", ".join(field_names))
-        
+
         all_items = []
         page_size = 1000
         
@@ -215,7 +215,7 @@ def load_data_from_sharepoint():
                 for prop_key, prop_value in item_properties.items():
                     if prop_key not in ['_ObjectType_', '_ObjectIdentity_', 'FileSystemObjectType', 'ServerRedirectedEmbedUri', 
                                        'ServerRedirectedEmbedUrl', 'ContentTypeId', 'ComplianceAssetId', 'OData__UIVersionString']:
-                        if prop_key == 'Title':
+                        if prop_key == 'Segment':
                             record['Segment'] = str(prop_value)
                         elif 'supplier' in prop_key.lower():
                             record['Supplier'] = str(prop_value)
