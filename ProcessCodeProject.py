@@ -974,6 +974,11 @@ def main():
                             st.subheader("Component Details")
                             # Convert the parts_lookup string to a DataFrame
                             try:
+                        parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
+                        if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
+                            st.subheader("Component Details")
+                            # Convert the parts_lookup string to a DataFrame
+                            try:
                                 parts_lines = parts_lookup.split('\n')
                                 if len(parts_lines) > 1:
                                     headers = parts_lines[0].split()
@@ -991,7 +996,7 @@ def main():
                                     
                                     # Capitalize all string columns
                                     for col in parts_df.columns:
-                                        parts_df[col] = parts_df[col].astype(str).str.upper()
+                                        parts_df[col] = parts_df[col].apply(lambda x: str(x).upper())
                                     
                                     # Display the DataFrame as a table
                                     st.table(parts_df)
