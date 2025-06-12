@@ -530,34 +530,20 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
         
         for i, code in enumerate(component_codes):
             filtered_df = component_validations_df[
-                component_validations_df['Process_Code'] == code
+                component_validations_df['Process_Code'].str.contains(code, na=False)
             ]
             
             if not filtered_df.empty:
                 for _, row in filtered_df.iterrows():
                     result_parts.append({
                         'Position': i + 1,
-                        'Process_Code_Char': code,
-                        'Component_Type': row['Component_Type'] if 'Component_Type' in row else "Unknown",
-                        'Supplier': row['Supplier'] if 'Supplier' in row else "Unknown",
-                        'Component_Generation': row['Component_Generation'] if 'Component_Generation' in row else "Unknown",
-                        'Revision': row['Revision'] if 'Revision' in row else "Unknown",
-                        'MPN': row['MPN'] if 'MPN' in row else "Unknown"
+                        'Process Code': code,
+                        'Component Type': row.get('Component_Type', "Unknown"),
+                        'Supplier': row.get('Supplier', "Unknown"),
+                        'Component Generation': row.get('Component_Generation', "Unknown"),
+                        'Revision': row.get('Revision', "Unknown"),
+                        'MPN': row.get('MPN', "Unknown")
                     })
-        
-        if not result_parts:
-            for i, code in enumerate(component_codes):
-                for _, row in component_validations_df.iterrows():
-                    if 'Process_Code' in row and code in str(row['Process_Code']):
-                        result_parts.append({
-                            'Position': i + 1,
-                            'Process_Code_Char': code,
-                            'Component_Type': row['Component_Type'] if 'Component_Type' in row else "Unknown",
-                            'Supplier': row['Supplier'] if 'Supplier' in row else "Unknown",
-                            'Component_Generation': row['Component_Generation'] if 'Component_Generation' in row else "Unknown",
-                            'Revision': row['Revision'] if 'Revision' in row else "Unknown",
-                            'MPN': row['MPN'] if 'MPN' in row else "Unknown"
-                        })
         
         if not result_parts:
             return "No matching parts found for the given process code"
@@ -565,8 +551,15 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
         result_df = pd.DataFrame(result_parts)
         result_df = result_df.sort_values('Position')
         
-        result = result_df.to_string(index=False)
-        return result
+        # Ensure all columns are present, even if empty
+        for col in ['Position', 'Process Code', 'Component Type', 'Supplier', 'Component Generation', 'Revision', 'MPN']:
+            if col not in result_df.columns:
+                result_df[col] = ""
+        
+        # Reorder columns
+        result_df = result_df[['Position', 'Process Code', 'Component Type', 'Supplier', 'Component Generation', 'Revision', 'MPN']]
+        
+        return result_df
     
     except Exception as e:
         return f"Error looking up parts: {e}"
@@ -970,38 +963,17 @@ def main():
                         st.info(explanation)
                         
                         parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
-                        if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
+                        if isinstance(parts_lookup, pd.DataFrame) and not parts_lookup.empty:
                             st.subheader("Component Details")
-                            # Convert the parts_lookup string to a DataFrame
-                            try:
-                                parts_lines = parts_lookup.split('\n')
-                                if len(parts_lines) > 1:
-                                    headers = parts_lines[0].split()
-                                    data = [line.split() for line in parts_lines[1:] if line.strip()]
-                                    
-                                    # Ensure data and headers have the same number of columns
-                                    max_columns = max(len(headers), max(len(row) for row in data))
-                                    headers = headers + [''] * (max_columns - len(headers))
-                                    data = [row + [''] * (max_columns - len(row)) for row in data]
-                                    
-                                    parts_df = pd.DataFrame(data, columns=headers)
-                                    
-                                    # Remove empty columns
-                                    parts_df = parts_df.dropna(axis=1, how='all')
-                                    
-                                    # Capitalize all string columns
-                                    for col in parts_df.columns:
-                                        parts_df[col] = parts_df[col].apply(lambda x: str(x).upper())
-                                    
-                                    # Display the DataFrame as a table
-                                    st.table(parts_df)
-                                else:
-                                    st.warning("No detailed component information available.")
-                            except Exception as e:
-                                st.error(f"Error processing component details: {str(e)}")
-                                st.text(parts_lookup)  # Display the raw lookup result
+    
+                            # Capitalize all string columns
+                            for col in parts_lookup.columns:
+                                parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
+    
+                            # Display the DataFrame as a table
+                            st.table(parts_lookup)
                         else:
-                            st.warning(parts_lookup)
+                            st.warning(str(parts_lookup))
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
