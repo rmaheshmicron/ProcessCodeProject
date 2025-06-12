@@ -92,6 +92,7 @@ def load_data_from_sharepoint():
     
     from office365.runtime.auth.user_credential import UserCredential
     from office365.sharepoint.client_context import ClientContext
+    from office365.sharepoint.listitems.caml.caml_query import CamlQuery
     
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
         username = st.secrets["sharepoint_username"]
@@ -113,39 +114,120 @@ def load_data_from_sharepoint():
         # Get the SharePoint list
         target_list = ctx.web.lists.get_by_title(list_name)
         
-        # Execute the query to get list items
-        items = target_list.items.get().execute_query()
+        # First, try to get all available lists to help with debugging
+        all_lists = ctx.web.lists.get().execute_query()
+        available_lists = [list_item.properties.get('Title', '') for list_item in all_lists]
         
-        if len(items) == 0:
+        with st.sidebar.expander("Available SharePoint Lists", expanded=False):
+            st.write(", ".join(available_lists))
+        
+        # If the specified list doesn't exist, try to find a similar one
+        if list_name not in available_lists:
+            st.sidebar.warning(f"List '{list_name}' not found. Looking for similar lists...")
+            similar_lists = [l for l in available_lists if 
+                            any(term in l.lower() for term in ['component', 'validation', 'module', 'design'])]
+            
+            if similar_lists:
+                list_name = similar_lists[0]
+                st.sidebar.success(f"Using list: {list_name}")
+                target_list = ctx.web.lists.get_by_title(list_name)
+            else:
+                st.sidebar.error("No suitable lists found")
+                return data
+        
+        # Get list fields to understand the schema
+        list_fields = target_list.fields.get().execute_query()
+        field_names = [field.properties.get('InternalName', '') for field in list_fields 
+                      if not field.properties.get('Hidden', True) and field.properties.get('InternalName', '')]
+        
+        with st.sidebar.expander("Available Fields", expanded=False):
+            st.write(", ".join(field_names))
+        
+        # Create a query to get all items with pagination
+        caml_query = CamlQuery()
+        caml_query.ViewXml = """
+        <View>
+            <ViewFields>
+                <FieldRef Name='ID' />
+                <FieldRef Name='Title' />
+            </ViewFields>
+            <RowLimit>5000</RowLimit>
+        </View>
+        """
+        
+        # Execute the query to get list items with pagination
+        all_items = []
+        items = target_list.get_items(caml_query).get().execute_query()
+        
+        # Process the first batch
+        for item in items:
+            all_items.append(item)
+        
+        # Check if there are more items to retrieve
+        while items.has_next:
+            items = items.get_next().execute_query()
+            for item in items:
+                all_items.append(item)
+        
+        if len(all_items) == 0:
             st.sidebar.error("No items found in the list")
             return data
+        
+        st.sidebar.success(f"Retrieved {len(all_items)} items from SharePoint")
+        
+        # Debug: Show sample item properties
+        if all_items:
+            with st.sidebar.expander("Sample Item Properties", expanded=False):
+                st.write(list(all_items[0].properties.keys()))
         
         # Process items for component validations
         component_validations_data = []
         
-        for item in items:
+        # Map field names based on available fields
+        field_mapping = {
+            'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market', 'title'])), 'Title'),
+            'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
+            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['generation', 'gen', 'componentgen'])), None),
+            'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None),
+            'Component_Type': next((f for f in field_names if any(term in f.lower() for term in ['component type', 'componenttype', 'type'])), None),
+            'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), None),
+            'MPN': next((f for f in field_names if any(term in f.lower() for term in ['mpn', 'part number', 'partnumber'])), None)
+        }
+        
+        with st.sidebar.expander("Field Mapping", expanded=False):
+            st.write(field_mapping)
+        
+        for item in all_items:
             item_properties = item.properties
             
-            # Map fields - adjust these based on your actual SharePoint list column names
-            segment = item_properties.get('Title', '')  # Often Title is used for primary field
-            supplier = item_properties.get('Supplier', '')
-            component_gen = item_properties.get('ComponentGeneration', '')
-            revision = item_properties.get('Revision', '')
-            component_type = item_properties.get('ComponentType', '')
-            process_code = item_properties.get('ProcessCode', '')
-            mpn = item_properties.get('MPN', '')
+            record = {}
+            for key, field in field_mapping.items():
+                if field and field in item_properties:
+                    record[key] = str(item_properties[field])
+                else:
+                    record[key] = ""
             
-            record = {
-                'Segment': str(segment),
-                'Supplier': str(supplier),
-                'Component_Generation': str(component_gen),
-                'Revision': str(revision),
-                'Component_Type': str(component_type),
-                'Process_Code': str(process_code),
-                'MPN': str(mpn)
-            }
+            # If we don't have a proper mapping, try to use any available fields
+            if not any(record.values()):
+                for prop_key, prop_value in item_properties.items():
+                    if prop_key not in ['_ObjectType_', '_ObjectIdentity_', 'FileSystemObjectType', 'ServerRedirectedEmbedUri', 
+                                       'ServerRedirectedEmbedUrl', 'ContentTypeId', 'ComplianceAssetId', 'OData__UIVersionString']:
+                        if prop_key == 'Title':
+                            record['Segment'] = str(prop_value)
+                        elif 'supplier' in prop_key.lower():
+                            record['Supplier'] = str(prop_value)
+                        elif 'gen' in prop_key.lower():
+                            record['Component_Generation'] = str(prop_value)
+                        elif 'rev' in prop_key.lower():
+                            record['Revision'] = str(prop_value)
+                        elif 'type' in prop_key.lower():
+                            record['Component_Type'] = str(prop_value)
+                        elif 'code' in prop_key.lower():
+                            record['Process_Code'] = str(prop_value)
+                        elif 'mpn' in prop_key.lower() or 'part' in prop_key.lower():
+                            record['MPN'] = str(prop_value)
             
-            if record['Segment'] and (record['Supplier'] or record['Component_Type'] or record['Process_Code']):
+            if record.get('Segment') and (record.get('Supplier') or record.get('Component_Type') or record.get('Process_Code')):
                 component_validations_data.append(record)
         
         component_validations_df = pd.DataFrame(component_validations_data)
@@ -159,32 +241,30 @@ def load_data_from_sharepoint():
         # Process items for module validations
         module_validation_data = []
         
-        for item in items:
+        # Map field names for module validation
+        module_field_mapping = {
+            'Segment': field_mapping['Segment'],
+            'Form_Factor': next((f for f in field_names if any(term in f.lower() for term in ['form factor', 'formfactor', 'form'])), None),
+            'Speed': next((f for f in field_names if any(term in f.lower() for term in ['speed', 'frequency', 'mhz'])), None),
+            'PMIC': next((f for f in field_names if any(term in f.lower() for term in ['pmic', 'power'])), None),
+            'SPD_Hub': next((f for f in field_names if any(term in f.lower() for term in ['spd', 'hub', 'spdhub'])), None),
+            'Temp_Sensor': next((f for f in field_names if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None),
+            'RCD_MRCD': next((f for f in field_names if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None),
+            'Data_Buffer': next((f for f in field_names if any(term in f.lower() for term in ['data buffer', 'databuffer', 'buffer'])), None),
+            'Process_Code': field_mapping['Process_Code']
+        }
+        
+        for item in all_items:
             item_properties = item.properties
             
-            # Map fields - adjust these based on your actual SharePoint list column names
-            segment = item_properties.get('Title', '')  # Often Title is used for primary field
-            form_factor = item_properties.get('FormFactor', '')
-            speed = item_properties.get('Speed', '')
-            pmic = item_properties.get('PMIC', '')
-            spd_hub = item_properties.get('SPDHub', '')
-            temp_sensor = item_properties.get('TempSensor', '')
-            rcd = item_properties.get('RCD', '')
-            data_buffer = item_properties.get('DataBuffer', '')
-            process_code = item_properties.get('ProcessCode', '')
+            record = {}
+            for key, field in module_field_mapping.items():
+                if field and field in item_properties:
+                    record[key] = str(item_properties[field])
+                else:
+                    record[key] = ""
             
-            if segment and process_code:
-                record = {
-                    'Segment': str(segment),
-                    'Form_Factor': str(form_factor),
-                    'Speed': str(speed),
-                    'PMIC': str(pmic),
-                    'SPD_Hub': str(spd_hub),
-                    'Temp_Sensor': str(temp_sensor),
-                    'RCD_MRCD': str(rcd),
-                    'Data_Buffer': str(data_buffer),
-                    'Process_Code': str(process_code)
-                }
+            if record.get('Segment') and record.get('Process_Code'):
                 module_validation_data.append(record)
         
         module_validation_df = pd.DataFrame(module_validation_data)
@@ -199,6 +279,8 @@ def load_data_from_sharepoint():
         # Provide more detailed error information
         with st.sidebar.expander("Detailed Error Information", expanded=False):
             st.write(str(e))
+            import traceback
+            st.write(traceback.format_exc())
             
             # Suggest common solutions
             st.write("Common solutions:")
