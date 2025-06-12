@@ -798,10 +798,13 @@ def main():
                 
                 if isinstance(process_code, str) and not process_code.startswith("No matching") and not process_code.startswith("Error"):
                     st.success(f"Generated Process Code: {process_code}")
-                    st.info(f"Component Type: {component_type}")
                     
                     if code_details is not None and not code_details.empty:
                         st.subheader("Component Details")
+                        # Capitalize all string columns in code_details
+                        for col in code_details.columns:
+                            if code_details[col].dtype == 'object':
+                                code_details[col] = code_details[col].str.upper()
                         st.dataframe(code_details)
                 else:
                     st.error(process_code)
