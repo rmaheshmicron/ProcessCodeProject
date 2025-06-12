@@ -91,7 +91,7 @@ def load_data_from_sharepoint():
     }
     
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
-    list_name = "Basic List"
+    list_name = "Module HW Design Component Validations"
     
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
         username = st.secrets["sharepoint_username"]
