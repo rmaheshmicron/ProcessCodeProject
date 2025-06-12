@@ -90,9 +90,8 @@ def load_data_from_sharepoint():
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
     list_name = "Basic List"
     
-    parsed_url = urlparse(sharepoint_site)
-    tenant = parsed_url.netloc.split('.')[0]
-    site_path = parsed_url.path
+    from office365.runtime.auth.user_credential import UserCredential
+    from office365.sharepoint.client_context import ClientContext
     
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
         username = st.secrets["sharepoint_username"]
@@ -107,137 +106,43 @@ def load_data_from_sharepoint():
         return data
     
     try:
-        authority = f"https://login.microsoftonline.com/micron.com"
-        scope = ["https://microncorp.sharepoint.com/.default"]
+        # Create a client context using user credentials
+        user_credentials = UserCredential(username, password)
+        ctx = ClientContext(sharepoint_site).with_credentials(user_credentials)
         
-        client_id = "1fec8e78-bce4-4aaf-ab1b-5451cc387264"
+        # Get the SharePoint list
+        target_list = ctx.web.lists.get_by_title(list_name)
         
-        app = msal.PublicClientApplication(
-            client_id=client_id,
-            authority=authority
-        )
-        
-        result = app.acquire_token_by_username_password(
-            username=username,
-            password=password,
-            scopes=scope
-        )
-        
-        if "access_token" not in result:
-            error_msg = result.get('error_description', 'Unknown error')
-            st.sidebar.error(f"Authentication failed: {error_msg}")
-            
-            if "AADSTS9001023" in error_msg:
-                st.sidebar.info("Try using your organization's tenant ID instead of 'common' in the authority URL.")
-            elif "AADSTS50126" in error_msg:
-                st.sidebar.info("Invalid username or password. Please check your credentials.")
-            elif "AADSTS50076" in error_msg or "AADSTS50079" in error_msg:
-                st.sidebar.info("Multi-factor authentication (MFA) is required. Consider using a different authentication method.")
-            
-            with st.sidebar.expander("Detailed Error Information", expanded=False):
-                st.write(result)
-            
-            return data
-        
-        access_token = result["access_token"]
-        
-        headers = {
-            "Authorization": f"Bearer {access_token}",
-            "Accept": "application/json;odata=verbose",
-            "Content-Type": "application/json;odata=verbose"
-        }
-        
-        list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(list_name)}')/items?$top=5000"
-        response = requests.get(list_items_url, headers=headers)
-        
-        if response.status_code != 200:
-            st.sidebar.warning(f"Direct access to '{list_name}' failed. Trying to find it among all lists...")
-            
-            site_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')"
-            response = requests.get(site_url, headers=headers)
-            
-            if response.status_code != 200:
-                st.sidebar.error(f"Error accessing SharePoint site: {response.status_code}")
-                return data
-            
-            site_info = response.json()
-            site_id = site_info['d']['Id']
-            
-            st.sidebar.success(f"Connected to SharePoint site: {site_info['d']['Title']}")
-            
-            lists_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists"
-            response = requests.get(lists_url, headers=headers)
-            
-            if response.status_code != 200:
-                st.sidebar.error(f"Error getting SharePoint lists: {response.status_code}")
-                return data
-            
-            lists_info = response.json()
-            available_lists = [list_item['Title'] for list_item in lists_info['d']['results']]
-            
-            with st.sidebar.expander("Available SharePoint Lists", expanded=False):
-                st.write(", ".join(available_lists))
-            
-            component_validations_list_name = None
-            for list_title in available_lists:
-                if "basic" in list_title.lower() or "component" in list_title.lower() or "validation" in list_title.lower():
-                    component_validations_list_name = list_title
-                    break
-            
-            if not component_validations_list_name:
-                st.sidebar.error(f"Could not find '{list_name}' or similar list")
-                return data
-            
-            st.sidebar.success(f"Found list: {component_validations_list_name}")
-            
-            list_items_url = f"https://{tenant}.sharepoint.com/_api/web/GetSiteByUrl('{quote(site_path)}')/lists/GetByTitle('{quote(component_validations_list_name)}')/items?$top=5000"
-            response = requests.get(list_items_url, headers=headers)
-            
-            if response.status_code != 200:
-                st.sidebar.error(f"Error getting list items: {response.status_code}")
-                return data
-        
-        items_info = response.json()
-        items = items_info['d']['results']
+        # Execute the query to get list items
+        items = target_list.items.get().execute_query()
         
         if len(items) == 0:
             st.sidebar.error("No items found in the list")
             return data
         
-        with st.sidebar.expander("Sample Item Fields", expanded=False):
-            st.write(", ".join(items[0].keys()))
-        
+        # Process items for component validations
         component_validations_data = []
         
         for item in items:
-            segment_field = next((f for f in item.keys() 
-                               if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
-            supplier_field = next((f for f in item.keys() 
-                                if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None)
-            component_gen_field = next((f for f in item.keys() 
-                                     if any(term in f.lower() for term in ['generation', 'gen', 'component gen'])), None)
-            revision_field = next((f for f in item.keys() 
-                                if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None)
-            component_type_field = next((f for f in item.keys() 
-                                      if any(term in f.lower() for term in ['component type', 'type', 'comp type'])), None)
-            process_code_field = next((f for f in item.keys() 
-                                    if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
-            mpn_field = next((f for f in item.keys() 
-                           if any(term in f.lower() for term in ['mpn', 'part number', 'part'])), None)
+            item_properties = item.properties
             
-            if not segment_field and 'Title' in item:
-                segment_field = 'Title'
-            if not supplier_field and 'Author' in item:
-                supplier_field = 'Author'
+            # Map fields - adjust these based on your actual SharePoint list column names
+            segment = item_properties.get('Title', '')  # Often Title is used for primary field
+            supplier = item_properties.get('Supplier', '')
+            component_gen = item_properties.get('ComponentGeneration', '')
+            revision = item_properties.get('Revision', '')
+            component_type = item_properties.get('ComponentType', '')
+            process_code = item_properties.get('ProcessCode', '')
+            mpn = item_properties.get('MPN', '')
             
             record = {
-                'Segment': str(item.get(segment_field, '')) if segment_field else '',
-                'Supplier': str(item.get(supplier_field, '')) if supplier_field else '',
-                'Component_Generation': str(item.get(component_gen_field, '')) if component_gen_field else '',
-                'Revision': str(item.get(revision_field, '')) if revision_field else '',
-                'Component_Type': str(item.get(component_type_field, '')) if component_type_field else '',
-                'Process_Code': str(item.get(process_code_field, '')) if process_code_field else '',
-                'MPN': str(item.get(mpn_field, '')) if mpn_field else ''
+                'Segment': str(segment),
+                'Supplier': str(supplier),
+                'Component_Generation': str(component_gen),
+                'Revision': str(revision),
+                'Component_Type': str(component_type),
+                'Process_Code': str(process_code),
+                'MPN': str(mpn)
             }
             
             if record['Segment'] and (record['Supplier'] or record['Component_Type'] or record['Process_Code']):
@@ -251,39 +156,34 @@ def load_data_from_sharepoint():
         with st.sidebar.expander("Sample Data (First 5 Rows)", expanded=False):
             st.dataframe(component_validations_df.head())
         
+        # Process items for module validations
         module_validation_data = []
         
         for item in items:
-            segment_field = next((f for f in item.keys() 
-                               if any(term in f.lower() for term in ['segment', 'market', 'seg'])), None)
-            form_factor_field = next((f for f in item.keys() 
-                                   if any(term in f.lower() for term in ['form factor', 'form', 'ff'])), None)
-            speed_field = next((f for f in item.keys() 
-                             if any(term in f.lower() for term in ['speed', 'spd', 'bin'])), None)
-            pmic_field = next((f for f in item.keys() 
-                            if any(term in f.lower() for term in ['pmic', 'power'])), None)
-            spd_hub_field = next((f for f in item.keys() 
-                               if any(term in f.lower() for term in ['spd', 'hub', 'spd/hub'])), None)
-            temp_sensor_field = next((f for f in item.keys() 
-                                   if any(term in f.lower() for term in ['temp', 'sensor', 'temperature'])), None)
-            rcd_field = next((f for f in item.keys() 
-                           if any(term in f.lower() for term in ['rcd', 'mrcd', 'register'])), None)
-            data_buffer_field = next((f for f in item.keys() 
-                                   if any(term in f.lower() for term in ['data buffer', 'buffer', 'db'])), None)
-            process_code_field = next((f for f in item.keys() 
-                                    if any(term in f.lower() for term in ['process code', 'code', 'pc'])), None)
+            item_properties = item.properties
             
-            if segment_field and process_code_field:
+            # Map fields - adjust these based on your actual SharePoint list column names
+            segment = item_properties.get('Title', '')  # Often Title is used for primary field
+            form_factor = item_properties.get('FormFactor', '')
+            speed = item_properties.get('Speed', '')
+            pmic = item_properties.get('PMIC', '')
+            spd_hub = item_properties.get('SPDHub', '')
+            temp_sensor = item_properties.get('TempSensor', '')
+            rcd = item_properties.get('RCD', '')
+            data_buffer = item_properties.get('DataBuffer', '')
+            process_code = item_properties.get('ProcessCode', '')
+            
+            if segment and process_code:
                 record = {
-                    'Segment': str(item.get(segment_field, '')),
-                    'Form_Factor': str(item.get(form_factor_field, '')) if form_factor_field else '',
-                    'Speed': str(item.get(speed_field, '')) if speed_field else '',
-                    'PMIC': str(item.get(pmic_field, '')) if pmic_field else '',
-                    'SPD_Hub': str(item.get(spd_hub_field, '')) if spd_hub_field else '',
-                    'Temp_Sensor': str(item.get(temp_sensor_field, '')) if temp_sensor_field else '',
-                    'RCD_MRCD': str(item.get(rcd_field, '')) if rcd_field else '',
-                    'Data_Buffer': str(item.get(data_buffer_field, '')) if data_buffer_field else '',
-                    'Process_Code': str(item.get(process_code_field, ''))
+                    'Segment': str(segment),
+                    'Form_Factor': str(form_factor),
+                    'Speed': str(speed),
+                    'PMIC': str(pmic),
+                    'SPD_Hub': str(spd_hub),
+                    'Temp_Sensor': str(temp_sensor),
+                    'RCD_MRCD': str(rcd),
+                    'Data_Buffer': str(data_buffer),
+                    'Process_Code': str(process_code)
                 }
                 module_validation_data.append(record)
         
@@ -295,6 +195,17 @@ def load_data_from_sharepoint():
         
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
+        
+        # Provide more detailed error information
+        with st.sidebar.expander("Detailed Error Information", expanded=False):
+            st.write(str(e))
+            
+            # Suggest common solutions
+            st.write("Common solutions:")
+            st.write("1. Verify your username and password are correct")
+            st.write("2. Ensure you have access to the SharePoint site and list")
+            st.write("3. Check if MFA is required for your account")
+            st.write("4. Verify the SharePoint site URL and list name are correct")
     
     return data
 

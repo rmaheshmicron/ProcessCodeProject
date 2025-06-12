@@ -1,2 +1,5 @@
-msal
+office365-rest-python-client
+snowflake-snowpark-python
+streamlit
+pandas
 requests
