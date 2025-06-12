@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from io import StringIO
 import requests
 from urllib.parse import urlparse, quote
 from datetime import datetime
@@ -974,7 +973,8 @@ def main():
                         if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
                             st.subheader("Component Details")
                             # Convert the parts_lookup string to a DataFrame
-                            parts_df = pd.read_csv(StringIO(parts_lookup), sep='\s+')
+                            parts_df = pd.DataFrame([part.split() for part in parts_lookup.split('\n')[1:]], 
+                                                    columns=parts_lookup.split('\n')[0].split())
                             
                             # Capitalize all string columns
                             for col in parts_df.columns:
