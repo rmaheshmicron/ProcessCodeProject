@@ -688,12 +688,7 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     
     filtered_df = df.copy()
     
-    # Convert all string columns to lowercase for case-insensitive comparison
-    for col in filtered_df.columns:
-        if filtered_df[col].dtype == 'object':
-            filtered_df[col] = filtered_df[col].str.lower()
-    
-    # Apply filters
+    # Apply filters (case-insensitive)
     if segment and 'Segment' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
     
@@ -714,7 +709,7 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
         
         for key, variations in type_variations.items():
             if any(var in component_type_lower for var in variations):
-                filtered_df = filtered_df[filtered_df['Component_Type'].str.contains('|'.join(variations), na=False)]
+                filtered_df = filtered_df[filtered_df['Component_Type'].str.lower().str.contains('|'.join(variations), na=False)]
                 break
     
     if filtered_df.empty:
@@ -732,9 +727,9 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     # For segment field, ensure we only return Client or Server
     if field == 'Segment':
         valid_segments = ["Client", "Server"]
-        cleaned_options = [opt.title() for opt in cleaned_options if opt.lower() in [s.lower() for s in valid_segments]]
+        cleaned_options = [opt for opt in cleaned_options if opt.lower() in [s.lower() for s in valid_segments]]
     
-    return sorted(cleaned_options)
+    return sorted(cleaned_options, key=lambda x: str(x).lower())
 
 def main():
     st.title("Process Code & Part Specification Generator")
