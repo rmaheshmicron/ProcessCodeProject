@@ -425,6 +425,9 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
             if len(process_code) > 1:
                 process_code = process_code[0]
         
+        # Convert the process code to uppercase
+        process_code = process_code.upper()
+        
         component_type_result = filtered_df.iloc[0]['Component_Type'] if 'Component_Type' in filtered_df.columns else "Unknown"
         
         return process_code, component_type_result, filtered_df
