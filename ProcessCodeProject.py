@@ -91,7 +91,7 @@ def load_data_from_sharepoint():
     }
     
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
-    list_name = "Module HW Design Component Validations"
+    list_name = "Basic List"
     
     if "sharepoint_username" in st.secrets and "sharepoint_password" in st.secrets:
         username = st.secrets["sharepoint_username"]
@@ -106,21 +106,17 @@ def load_data_from_sharepoint():
         return data
     
     try:
-        # Create a client context using user credentials
         user_credentials = UserCredential(username, password)
         ctx = ClientContext(sharepoint_site).with_credentials(user_credentials)
         
-        # Get the SharePoint list
         target_list = ctx.web.lists.get_by_title(list_name)
         
-        # First, try to get all available lists to help with debugging
         all_lists = ctx.web.lists.get().execute_query()
         available_lists = [list_item.properties.get('Title', '') for list_item in all_lists]
         
         with st.sidebar.expander("Available SharePoint Lists", expanded=False):
             st.write(", ".join(available_lists))
         
-        # If the specified list doesn't exist, try to find a similar one
         if list_name not in available_lists:
             st.sidebar.warning(f"List '{list_name}' not found. Looking for similar lists...")
             similar_lists = [l for l in available_lists if 
@@ -134,7 +130,6 @@ def load_data_from_sharepoint():
                 st.sidebar.error("No suitable lists found")
                 return data
         
-        # Get list fields to understand the schema
         list_fields = target_list.fields.get().execute_query()
         field_names = [field.properties.get('InternalName', '') for field in list_fields 
                       if not field.properties.get('Hidden', True) and field.properties.get('InternalName', '')]
@@ -142,31 +137,45 @@ def load_data_from_sharepoint():
         with st.sidebar.expander("Available Fields", expanded=False):
             st.write(", ".join(field_names))
         
-        # Create a query to get all items with pagination
+        all_items = []
+        page_size = 1000
+        
         caml_query = CamlQuery()
-        caml_query.ViewXml = """
+        caml_query.ViewXml = f"""
         <View>
-            <ViewFields>
-                <FieldRef Name='ID' />
-                <FieldRef Name='Title' />
-            </ViewFields>
-            <RowLimit>5000</RowLimit>
+            <RowLimit>{page_size}</RowLimit>
         </View>
         """
         
-        # Execute the query to get list items with pagination
-        all_items = []
-        items = target_list.get_items(caml_query).get().execute_query()
+        items = target_list.get_items(caml_query).execute_query()
+        all_items.extend(items)
         
-        # Process the first batch
-        for item in items:
-            all_items.append(item)
-        
-        # Check if there are more items to retrieve
-        while items.has_next:
-            items = items.get_next().execute_query()
-            for item in items:
-                all_items.append(item)
+        while len(items) == page_size:
+            last_id = items[-1].properties.get('ID')
+            
+            caml_query = CamlQuery()
+            caml_query.ViewXml = f"""
+            <View>
+                <Query>
+                    <Where>
+                        <Gt>
+                            <FieldRef Name='ID' />
+                            <Value Type='Number'>{last_id}</Value>
+                        </Gt>
+                    </Where>
+                    <OrderBy>
+                        <FieldRef Name='ID' Ascending='True' />
+                    </OrderBy>
+                </Query>
+                <RowLimit>{page_size}</RowLimit>
+            </View>
+            """
+            
+            items = target_list.get_items(caml_query).execute_query()
+            all_items.extend(items)
+            
+            if len(items) < page_size:
+                break
         
         if len(all_items) == 0:
             st.sidebar.error("No items found in the list")
@@ -174,15 +183,12 @@ def load_data_from_sharepoint():
         
         st.sidebar.success(f"Retrieved {len(all_items)} items from SharePoint")
         
-        # Debug: Show sample item properties
         if all_items:
             with st.sidebar.expander("Sample Item Properties", expanded=False):
                 st.write(list(all_items[0].properties.keys()))
         
-        # Process items for component validations
         component_validations_data = []
         
-        # Map field names based on available fields
         field_mapping = {
             'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market', 'title'])), 'Title'),
             'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
@@ -206,7 +212,6 @@ def load_data_from_sharepoint():
                 else:
                     record[key] = ""
             
-            # If we don't have a proper mapping, try to use any available fields
             if not any(record.values()):
                 for prop_key, prop_value in item_properties.items():
                     if prop_key not in ['_ObjectType_', '_ObjectIdentity_', 'FileSystemObjectType', 'ServerRedirectedEmbedUri', 
@@ -237,10 +242,8 @@ def load_data_from_sharepoint():
         with st.sidebar.expander("Sample Data (First 5 Rows)", expanded=False):
             st.dataframe(component_validations_df.head())
         
-        # Process items for module validations
         module_validation_data = []
         
-        # Map field names for module validation
         module_field_mapping = {
             'Segment': field_mapping['Segment'],
             'Form_Factor': next((f for f in field_names if any(term in f.lower() for term in ['form factor', 'formfactor', 'form'])), None),
@@ -275,13 +278,11 @@ def load_data_from_sharepoint():
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
         
-        # Provide more detailed error information
         with st.sidebar.expander("Detailed Error Information", expanded=False):
             st.write(str(e))
             import traceback
             st.write(traceback.format_exc())
             
-            # Suggest common solutions
             st.write("Common solutions:")
             st.write("1. Verify your username and password are correct")
             st.write("2. Ensure you have access to the SharePoint site and list")
@@ -758,29 +759,33 @@ def main():
             
             rcd_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
                                                       segment=rcd_segment, component_type="RCD/MRCD") or predefined_options['supplier']
+            rcd_supplier_options = rcd_supplier_options + ["None"]
             rcd_supplier = st.selectbox("Supplier", options=rcd_supplier_options, key="rcd_supplier")
             
-            rcd_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                 segment=rcd_segment, supplier=rcd_supplier) or predefined_options['component_generation']
-            rcd_gen = st.selectbox("Component Generation", options=rcd_gen_options, key="rcd_gen")
-            
-            rcd_rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                segment=rcd_segment, supplier=rcd_supplier) or predefined_options['revision']
-            rcd_rev = st.selectbox("Revision", options=rcd_rev_options, key="rcd_rev")
-            
-            rcd_code, _, _ = get_component_process_code(
-                rcd_segment, rcd_supplier, rcd_gen, rcd_rev, "RCD/MRCD", component_validations_df
-            )
-            if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error"):
-                st.success(f"RCD/MRCD Process Code: {rcd_code}")
+            if rcd_supplier != "None":
+                rcd_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                     segment=rcd_segment, supplier=rcd_supplier) or predefined_options['component_generation']
+                rcd_gen = st.selectbox("Component Generation", options=rcd_gen_options, key="rcd_gen")
+                
+                rcd_rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                    segment=rcd_segment, supplier=rcd_supplier) or predefined_options['revision']
+                rcd_rev = st.selectbox("Revision", options=rcd_rev_options, key="rcd_rev")
+                
+                rcd_code, _, _ = get_component_process_code(
+                    rcd_segment, rcd_supplier, rcd_gen, rcd_rev, "RCD/MRCD", component_validations_df
+                )
+                if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error"):
+                    st.success(f"RCD/MRCD Process Code: {rcd_code}")
+                else:
+                    st.error(f"RCD/MRCD Process Code: {rcd_code}")
             else:
-                st.error(f"RCD/MRCD Process Code: {rcd_code}")
+                rcd_code = ""
             
             st.subheader("Data Buffer")
             db_segment = st.selectbox("Segment", options=predefined_options['segment'], key="db_segment")
             
-            db_supplier_options = get_filtered_options(component_validations_df, 'Supplier',
-                                                    segment=db_segment, component_type="Data Buffer") or predefined_options['supplier']
+            db_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                     segment=db_segment, component_type="Data Buffer") or predefined_options['supplier']
             db_supplier_options = db_supplier_options + ["None"]
             db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
             
@@ -806,91 +811,189 @@ def main():
             if st.button("Generate Module Process Code"):
                 st.session_state.active_tab = "module_process_code"
                 
-                selected_segment = pmic_segment
-                part.set_segment(selected_segment)
+                module_segment = pmic_segment
                 
-                part.set_pmic(pmic_code if isinstance(pmic_code, str) and not pmic_code.startswith("No matching") and not pmic_code.startswith("Error") else "")
-                part.set_spd_hub(spd_code if isinstance(spd_code, str) and not spd_code.startswith("No matching") and not spd_code.startswith("Error") else "")
-                part.set_temp_sensor(temp_code if isinstance(temp_code, str) and not temp_code.startswith("No matching") and not temp_code.startswith("Error") else "")
-                part.set_rcd_mrcd(rcd_code if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error") else "")
-                part.set_data_buffer(db_code if 'db_code' in locals() and isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error") else "")
-                
-                combined_code = get_module_process_code(
-                    part.pmic, part.spd_hub, part.temp_sensor, 
-                    part.rcd_mrcd, part.data_buffer,
-                    selected_segment
-                )
-                
-                if isinstance(combined_code, str) and not combined_code.startswith("For") and not combined_code.startswith("Error") and not combined_code.startswith("Unknown"):
-                    st.session_state.process_code_explanation = explain_process_code(combined_code, selected_segment)
-                    result_text = f"Generated Module Process Code: {combined_code}"
+                if pmic_code.startswith("No matching") or pmic_code.startswith("Error"):
+                    st.error("Invalid PMIC process code. Please check PMIC selection.")
+                elif spd_code.startswith("No matching") or spd_code.startswith("Error"):
+                    st.error("Invalid SPD/Hub process code. Please check SPD/Hub selection.")
+                elif temp_supplier != "None" and (temp_code.startswith("No matching") or temp_code.startswith("Error")):
+                    st.error("Invalid Temp Sensor process code. Please check Temp Sensor selection.")
+                elif rcd_supplier != "None" and (rcd_code.startswith("No matching") or rcd_code.startswith("Error")):
+                    st.error("Invalid RCD/MRCD process code. Please check RCD/MRCD selection.")
+                elif db_supplier != "None" and (db_code.startswith("No matching") or db_code.startswith("Error")):
+                    st.error("Invalid Data Buffer process code. Please check Data Buffer selection.")
                 else:
-                    result_text = combined_code
-                
-                st.session_state.result = result_text
-                st.session_state.show_result = True
-                
-                if isinstance(combined_code, str) and not combined_code.startswith("For") and not combined_code.startswith("Error") and not combined_code.startswith("Unknown"):
-                    synthetic_data = {
-                        'Segment': [selected_segment],
-                        'PMIC': [part.pmic],
-                        'SPD_Hub': [part.spd_hub],
-                        'Temp_Sensor': [part.temp_sensor],
-                        'RCD_MRCD': [part.rcd_mrcd],
-                        'Data_Buffer': [part.data_buffer],
-                        'Process_Code': [combined_code]
-                    }
-                    st.session_state.code_details = pd.DataFrame(synthetic_data)
-                else:
-                    st.session_state.code_details = None
+                    process_code = get_module_process_code(
+                        pmic_code, spd_code, temp_code, rcd_code, db_code, module_segment
+                    )
+                    
+                    if process_code.startswith("For server") or process_code.startswith("For client") or process_code.startswith("Unknown"):
+                        st.error(process_code)
+                    else:
+                        st.success(f"Generated Module Process Code: {process_code}")
+                        
+                        explanation = explain_process_code(process_code, module_segment)
+                        st.info(explanation)
+                        
+                        parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
+                        if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
+                            st.subheader("Component Details")
+                            st.text(parts_lookup)
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
         
-        process_code = st.text_input("Process Code", key="pc_lookup")
+        lookup_segment = st.selectbox("Segment", options=predefined_options['segment'], key="lookup_segment")
+        lookup_process_code = st.text_input("Process Code", key="lookup_process_code")
         
         if st.button("Look Up Parts"):
-            st.session_state.active_tab = "part_spec"
-            
-            if not process_code:
+            if not lookup_process_code:
                 st.error("Please enter a process code")
             else:
-                part.set_process_code(process_code)
-                
-                parts_result = lookup_parts_by_process_code(process_code, component_validations_df)
-                part.set_associated_parts(parts_result)
-                
-                st.session_state.result = f"Parts for Process Code {process_code}:\n\n{parts_result}"
-                st.session_state.show_result = True
-                
-                if not parts_result.startswith("No matching") and not parts_result.startswith("Error"):
-                    segment = "Server" if len(process_code) >= 4 else "Client"
-                    st.session_state.process_code_explanation = explain_process_code(process_code, segment)
-    
-    if 'show_result' not in st.session_state:
-        st.session_state.show_result = False
-        st.session_state.result = ""
-    
-    if st.session_state.show_result:
-        st.header("Result")
-        st.text_area("Specification", st.session_state.result, height=300)
+                parts_lookup = lookup_parts_by_process_code(lookup_process_code, component_validations_df)
+                if parts_lookup.startswith("No matching") or parts_lookup.startswith("Error"):
+                    st.error(parts_lookup)
+                else:
+                    st.success(f"Found components for process code: {lookup_process_code}")
+                    
+                    explanation = explain_process_code(lookup_process_code, lookup_segment)
+                    st.info(explanation)
+                    
+                    st.subheader("Component Details")
+                    st.text(parts_lookup)
         
-        if 'process_code_explanation' in st.session_state:
-            st.subheader("Process Code Explanation")
-            st.text_area("Breakdown", st.session_state.process_code_explanation, height=250)
+        st.write("---")
         
-        if 'code_details' in st.session_state and st.session_state.code_details is not None:
-            st.subheader("Process Code Details")
-            st.dataframe(st.session_state.code_details)
+        st.write("Or build a part specification by selecting components:")
         
-        if st.button("Clear and Start Over"):
-            st.session_state.show_result = False
-            st.session_state.result = ""
-            if 'code_details' in st.session_state:
-                st.session_state.code_details = None
-            if 'process_code_explanation' in st.session_state:
-                del st.session_state.process_code_explanation
-            st.rerun()
+        part_spec = PartSpecification()
+        
+        part_segment = st.selectbox("Segment", options=predefined_options['segment'], key="part_segment")
+        part_spec.set_segment(part_segment)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("PMIC")
+            part_pmic_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="part_pmic_supplier")
+            part_pmic_gen = st.selectbox("Generation", options=predefined_options['component_generation'], key="part_pmic_gen")
+            part_pmic_rev = st.selectbox("Revision", options=predefined_options['revision'], key="part_pmic_rev")
+            
+            pmic_code, _, _ = get_component_process_code(
+                part_segment, part_pmic_supplier, part_pmic_gen, part_pmic_rev, "PMIC", component_validations_df
+            )
+            if isinstance(pmic_code, str) and not pmic_code.startswith("No matching") and not pmic_code.startswith("Error"):
+                st.success(f"PMIC Process Code: {pmic_code}")
+                part_spec.set_pmic(pmic_code)
+            else:
+                st.error(f"PMIC Process Code: {pmic_code}")
+            
+            st.subheader("Temp Sensor")
+            part_temp_supplier = st.selectbox("Supplier", options=predefined_options['supplier'] + ["None"], key="part_temp_supplier")
+            
+            if part_temp_supplier != "None":
+                part_temp_gen = st.selectbox("Generation", options=predefined_options['component_generation'], key="part_temp_gen")
+                part_temp_rev = st.selectbox("Revision", options=predefined_options['revision'], key="part_temp_rev")
+                
+                temp_code, _, _ = get_component_process_code(
+                    part_segment, part_temp_supplier, part_temp_gen, part_temp_rev, "Temp Sensor", component_validations_df
+                )
+                if isinstance(temp_code, str) and not temp_code.startswith("No matching") and not temp_code.startswith("Error"):
+                    st.success(f"Temp Sensor Process Code: {temp_code}")
+                    part_spec.set_temp_sensor(temp_code)
+                else:
+                    st.error(f"Temp Sensor Process Code: {temp_code}")
+            
+            st.subheader("Data Buffer")
+            part_db_supplier = st.selectbox("Supplier", options=predefined_options['supplier'] + ["None"], key="part_db_supplier")
+            
+            if part_db_supplier != "None":
+                part_db_gen = st.selectbox("Generation", options=predefined_options['component_generation'], key="part_db_gen")
+                part_db_rev = st.selectbox("Revision", options=predefined_options['revision'], key="part_db_rev")
+                
+                db_code, _, _ = get_component_process_code(
+                    part_segment, part_db_supplier, part_db_gen, part_db_rev, "Data Buffer", component_validations_df
+                )
+                if isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error"):
+                    st.success(f"Data Buffer Process Code: {db_code}")
+                    part_spec.set_data_buffer(db_code)
+                else:
+                    st.error(f"Data Buffer Process Code: {db_code}")
+        
+        with col2:
+            st.subheader("SPD/Hub")
+            part_spd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'], key="part_spd_supplier")
+            part_spd_gen = st.selectbox("Generation", options=predefined_options['component_generation'], key="part_spd_gen")
+            part_spd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="part_spd_rev")
+            
+            spd_code, _, _ = get_component_process_code(
+                part_segment, part_spd_supplier, part_spd_gen, part_spd_rev, "SPD/Hub", component_validations_df
+            )
+            if isinstance(spd_code, str) and not spd_code.startswith("No matching") and not spd_code.startswith("Error"):
+                st.success(f"SPD/Hub Process Code: {spd_code}")
+                part_spec.set_spd_hub(spd_code)
+            else:
+                st.error(f"SPD/Hub Process Code: {spd_code}")
+            
+            st.subheader("RCD/MRCD")
+            part_rcd_supplier = st.selectbox("Supplier", options=predefined_options['supplier'] + ["None"], key="part_rcd_supplier")
+            
+            if part_rcd_supplier != "None":
+                part_rcd_gen = st.selectbox("Generation", options=predefined_options['component_generation'], key="part_rcd_gen")
+                part_rcd_rev = st.selectbox("Revision", options=predefined_options['revision'], key="part_rcd_rev")
+                
+                rcd_code, _, _ = get_component_process_code(
+                    part_segment, part_rcd_supplier, part_rcd_gen, part_rcd_rev, "RCD/MRCD", component_validations_df
+                )
+                if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error"):
+                    st.success(f"RCD/MRCD Process Code: {rcd_code}")
+                    part_spec.set_rcd_mrcd(rcd_code)
+                else:
+                    st.error(f"RCD/MRCD Process Code: {rcd_code}")
+        
+        if st.button("Generate Part Specification"):
+            process_code = get_module_process_code(
+                part_spec.pmic, part_spec.spd_hub, part_spec.temp_sensor, 
+                part_spec.rcd_mrcd, part_spec.data_buffer, part_spec.segment
+            )
+            
+            if process_code.startswith("For server") or process_code.startswith("For client") or process_code.startswith("Unknown"):
+                st.error(process_code)
+            else:
+                part_spec.set_process_code(process_code)
+                
+                st.success(f"Generated Process Code: {process_code}")
+                
+                explanation = explain_process_code(process_code, part_spec.segment)
+                st.info(explanation)
+                
+                parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
+                if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
+                    st.subheader("Component Details")
+                    st.text(parts_lookup)
+                    
+                    part_spec.set_associated_parts(parts_lookup)
+                    
+                    st.download_button(
+                        label="Download Part Specification",
+                        data=f"""Part Specification
+Segment: {part_spec.segment}
+Process Code: {part_spec.process_code}
+
+Component Breakdown:
+PMIC: {part_spec.pmic}
+SPD/Hub: {part_spec.spd_hub}
+Temp Sensor: {part_spec.temp_sensor if part_spec.temp_sensor else 'N/A'}
+RCD/MRCD: {part_spec.rcd_mrcd if part_spec.rcd_mrcd else 'N/A'}
+Data Buffer: {part_spec.data_buffer if part_spec.data_buffer else 'N/A'}
+
+Component Details:
+{part_spec.associated_parts}
+""",
+                        file_name=f"part_spec_{process_code}_{pd.Timestamp.now().strftime('%Y%m%d')}.txt",
+                        mime="text/plain",
+                    )
 
 if __name__ == "__main__":
     main()
