@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import requests
 from urllib.parse import urlparse, quote
-import msal
 from datetime import datetime
 from office365.runtime.auth.user_credential import UserCredential
 from office365.sharepoint.client_context import ClientContext
