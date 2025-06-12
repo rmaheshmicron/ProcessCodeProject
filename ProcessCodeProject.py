@@ -973,16 +973,27 @@ def main():
                         if not parts_lookup.startswith("No matching") and not parts_lookup.startswith("Error"):
                             st.subheader("Component Details")
                             # Convert the parts_lookup string to a DataFrame
-                            parts_df = pd.DataFrame([part.split() for part in parts_lookup.split('\n')[1:]], 
-                                                    columns=parts_lookup.split('\n')[0].split())
-                            
-                            # Capitalize all string columns
-                            for col in parts_df.columns:
-                                if parts_df[col].dtype == 'object':
-                                    parts_df[col] = parts_df[col].str.upper()
-                            
-                            # Display the DataFrame as a table
-                            st.table(parts_df)
+                            try:
+                                parts_lines = parts_lookup.split('\n')
+                                if len(parts_lines) > 1:
+                                    headers = parts_lines[0].split()
+                                    data = [line.split() for line in parts_lines[1:] if line.strip()]
+                                    parts_df = pd.DataFrame(data, columns=headers)
+                                    
+                                    # Capitalize all string columns
+                                    for col in parts_df.columns:
+                                        if parts_df[col].dtype == 'object':
+                                            parts_df[col] = parts_df[col].str.upper()
+                                    
+                                    # Display the DataFrame as a table
+                                    st.table(parts_df)
+                                else:
+                                    st.warning("No detailed component information available.")
+                            except Exception as e:
+                                st.error(f"Error processing component details: {str(e)}")
+                                st.text(parts_lookup)  # Display the raw lookup result
+                        else:
+                            st.warning(parts_lookup)
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
