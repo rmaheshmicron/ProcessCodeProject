@@ -191,7 +191,7 @@ def load_data_from_sharepoint():
         field_mapping = {
             'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market'])), 'Segment'),
             'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
-            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['generation', 'gen', 'componentgen'])), None),
+            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['Component_x0020_Cfg_x002f_Settin', 'gen', 'componentgen'])), None),
             'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None),
             'Component_Type': next((f for f in field_names if any(term in f.lower() for term in ['component type', 'componenttype', 'type'])), None),
             'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), None),
