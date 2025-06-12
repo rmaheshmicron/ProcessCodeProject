@@ -191,7 +191,7 @@ def load_data_from_sharepoint():
         field_mapping = {
             'Segment': 'Segment',
             'Supplier': 'Supplier',
-            'Component_Generation': 'Family_x0020_Description',
+            'Component_Generation': 'Component_Generation',
             'Revision': 'REV',
             'Component_Type': 'Title',
             'Process_Code': 'Process_x0020_Code',
