@@ -191,13 +191,12 @@ def load_data_from_sharepoint():
         field_mapping = {
             'Segment': next((f for f in field_names if any(term in f.lower() for term in ['segment', 'market'])), 'Segment'),
             'Supplier': next((f for f in field_names if any(term in f.lower() for term in ['supplier', 'vendor', 'manufacturer'])), None),
-            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['family', 'product family'])), 'Product_x0020_Family'),
-            'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), 'REV'),
-            'Component_Type': 'Title',  # Assuming 'Title' contains the component type
-            'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), 'Process_x0020_Code'),
-            'MPN': next((f for f in field_names if any(term in f.lower() for term in ['mpn', 'part number', 'partnumber'])), 'Supplier_x0020_PN')
+            'Component_Generation': next((f for f in field_names if any(term in f.lower() for term in ['Product_x0020_Family', 'gen', 'componentgen', 'component generation'])), None),
+            'Revision': next((f for f in field_names if any(term in f.lower() for term in ['revision', 'rev', 'version'])), None),
+            'Component_Type': next((f for f in field_names if any(term in f.lower() for term in ['title', 'componenttype', 'type', 'component'])), None),
+            'Process_Code': next((f for f in field_names if any(term in f.lower() for term in ['process code', 'processcode', 'code'])), None),
+            'MPN': next((f for f in field_names if any(term in f.lower() for term in ['mpn', 'part number', 'partnumber'])), None)
         }
-
         
         with st.sidebar.expander("Field Mapping", expanded=False):
             st.write(field_mapping)
@@ -605,7 +604,7 @@ def get_predefined_options(component_validations_df):
                     "B2-A", "B3", "C0", "C1", "C2", "C3", "C5", "D0", "D1", "D1/G1EX", "D2", 
                     "D3", "D5", "E0", "G1A", "G1B", "G1DX", "G1E", "MB2", "PG3.2", "R0", "R1", 
                     "R1.1", "R1.2", "R1.3", "R2", "R3.5", "R4.0", "R6.0", "R6.1", "R6.2", "X2"],
-        'component_type': ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer", "CKD"]
+        'component_type': ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
     }
     
     if not component_validations_df.empty:
@@ -653,34 +652,12 @@ def get_predefined_options(component_validations_df):
                 types = component_validations_df['Component_Type'].dropna().unique().tolist()
                 if types:
                     # Clean up component types and ensure we only have the standard types
-                    standard_types = ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer", "CKD"]
-                    
-                    # Map variations to standard types
-                    type_mapping = {
-                        'pmic': "PMIC",
-                        'power': "PMIC",
-                        'power management': "PMIC",
-                        'spd': "SPD/Hub",
-                        'hub': "SPD/Hub",
-                        'spd/hub': "SPD/Hub",
-                        'serial presence detect': "SPD/Hub",
-                        'temp': "Temp Sensor",
-                        'sensor': "Temp Sensor",
-                        'temperature': "Temp Sensor",
-                        'temp sensor': "Temp Sensor",
-                        'rcd': "RCD/MRCD",
-                        'mrcd': "RCD/MRCD",
-                        'register': "RCD/MRCD",
-                        'registering clock driver': "RCD/MRCD",
-                        'buffer': "Data Buffer",
-                        'data buffer': "Data Buffer",
-                        'db': "Data Buffer",
-                        'ckd': "CKD",
-                        'clock driver': "CKD"
-                    }
-                    
-                    # Keep only the standard component types
-                    default_options['component_type'] = standard_types
+                    valid_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
+                    cleaned_types = [t.strip() for t in types if t.strip() in valid_types]
+                    if cleaned_types:
+                        default_options['component_type'] = sorted(cleaned_types)
+                    else:
+                        default_options['component_type'] = valid_types
         
         except Exception as e:
             st.sidebar.warning(f"Error extracting options from data: {e}")
