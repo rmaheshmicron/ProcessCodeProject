@@ -991,7 +991,7 @@ def main():
                                     
                                     # Capitalize all string columns
                                     for col in parts_df.columns:
-                                        parts_df[col] = parts_df[col].astype(str).apply(lambda x: x.upper())
+                                        parts_df[col] = parts_df[col].astype(str).str.upper()
                                     
                                     # Display the DataFrame as a table
                                     st.table(parts_df)
