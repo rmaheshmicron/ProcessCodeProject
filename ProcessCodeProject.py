@@ -547,9 +547,7 @@ def get_predefined_options(component_validations_df):
                     "B2-A", "B3", "C0", "C1", "C2", "C3", "C5", "D0", "D1", "D1/G1EX", "D2", 
                     "D3", "D5", "E0", "G1A", "G1B", "G1DX", "G1E", "MB2", "PG3.2", "R0", "R1", 
                     "R1.1", "R1.2", "R1.3", "R2", "R3.5", "R4.0", "R6.0", "R6.1", "R6.2", "X2"],
-        'component_type': ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer", "CKD"],
-        'form_factor': ["DIMM", "SODIMM", "UDIMM", "RDIMM", "LRDIMM"],
-        'speed': ["4800", "5600", "6000", "6400", "7200", "8000"]
+        'component_type': ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer", "CKD"]
     }
     
     if not component_validations_df.empty:
@@ -632,7 +630,7 @@ def main():
     
     part = PartSpecification()
     
-    tab1, tab2, tab3 = st.tabs(["Process Code Generator", "Module Selector", "Part Specification Generator"])
+    tab1, tab2 = st.tabs(["Process Code Generator", "Part Specification Generator"])
     
     with tab1:
         subtab1, subtab2 = st.tabs(["Component", "Module"])
@@ -855,68 +853,6 @@ def main():
                     st.session_state.code_details = None
     
     with tab2:
-        st.write("Select module specifications to find the appropriate process code:")
-        
-        segment_options = ["Client", "Server"]
-        if not module_validation_df.empty and 'Segment' in module_validation_df.columns:
-            segments = module_validation_df['Segment'].dropna().unique().tolist()
-            if segments:
-                segment_options = sorted(list(set([s for s in segments if s])))
-        
-        selected_segment = st.selectbox("Segment", options=segment_options, key="module_segment")
-        
-        form_factor_options = predefined_options.get('form_factor', ["DIMM", "SODIMM", "UDIMM", "RDIMM", "LRDIMM"])
-        if not module_validation_df.empty and 'Form_Factor' in module_validation_df.columns:
-            filtered_df = module_validation_df[module_validation_df['Segment'].str.lower() == selected_segment.lower()]
-            form_factors = filtered_df['Form_Factor'].dropna().unique().tolist()
-            if form_factors:
-                form_factor_options = sorted(list(set([f for f in form_factors if f])))
-        
-        selected_form_factor = st.selectbox("Form Factor", options=form_factor_options, key="module_form_factor")
-        
-        speed_options = predefined_options.get('speed', ["4800", "5600", "6000", "6400", "7200", "8000"])
-        if not module_validation_df.empty and 'Speed' in module_validation_df.columns:
-            filtered_df = module_validation_df[
-                (module_validation_df['Segment'].str.lower() == selected_segment.lower()) &
-                (module_validation_df['Form_Factor'].str.lower() == selected_form_factor.lower())
-            ]
-            speeds = filtered_df['Speed'].dropna().unique().tolist()
-            if speeds:
-                speed_options = sorted(list(set([s for s in speeds if s])))
-        
-        selected_speed = st.selectbox("Speed", options=speed_options, key="module_speed")
-        
-        if st.button("Find Process Code"):
-            st.session_state.active_tab = "module_selector"
-            
-            process_code, code_details = filter_module_process_code(
-                selected_segment, selected_form_factor, selected_speed, module_validation_df
-            )
-            
-            if isinstance(process_code, str) and not process_code.startswith("No matching") and not process_code.startswith("Error"):
-                st.session_state.process_code_explanation = explain_process_code(process_code, selected_segment)
-                result_text = f"Process Code for {selected_segment} {selected_form_factor} {selected_speed}: {process_code}"
-                
-                if code_details is not None and not code_details.empty:
-                    component_details = []
-                    for component in ['PMIC', 'SPD_Hub', 'Temp_Sensor', 'RCD_MRCD', 'Data_Buffer']:
-                        if component in code_details.columns and not pd.isna(code_details.iloc[0][component]):
-                            component_details.append(f"{component}: {code_details.iloc[0][component]}")
-                    
-                    if component_details:
-                        result_text += "\n\nComponent Details:\n" + "\n".join(component_details)
-            else:
-                result_text = process_code
-            
-            st.session_state.result = result_text
-            st.session_state.show_result = True
-            
-            if code_details is not None and not code_details.empty:
-                st.session_state.code_details = code_details
-            else:
-                st.session_state.code_details = None
-    
-    with tab3:
         st.write("Enter a process code to look up the associated parts:")
         
         process_code = st.text_input("Process Code", key="pc_lookup")
