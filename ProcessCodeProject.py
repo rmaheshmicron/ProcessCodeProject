@@ -88,7 +88,7 @@ def load_data_from_sharepoint():
     }
     
     sharepoint_site = "https://microncorp.sharepoint.com/sites/mdg"
-    list_name = "Basic List"
+    list_name = "Module HW Design Validation"
     
     from office365.runtime.auth.user_credential import UserCredential
     from office365.sharepoint.client_context import ClientContext
