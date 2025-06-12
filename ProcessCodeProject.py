@@ -791,7 +791,7 @@ def main():
             selected_revision = st.selectbox("Revision", options=rev_options, key="revision_component")
             
             if st.button("Generate Component Process Code"):
-                process_code, component_type, code_details = get_component_process_code(
+                process_code, _, code_details = get_component_process_code(
                     selected_segment, selected_supplier, selected_component_gen, selected_revision, 
                     selected_component_type, component_validations_df
                 )
@@ -805,7 +805,10 @@ def main():
                         for col in code_details.columns:
                             if code_details[col].dtype == 'object':
                                 code_details[col] = code_details[col].str.upper()
-                        st.dataframe(code_details)
+                        
+                        # Convert the DataFrame to a string representation
+                        code_details_str = code_details.to_string(index=False)
+                        st.text(code_details_str)
                 else:
                     st.error(process_code)
         
