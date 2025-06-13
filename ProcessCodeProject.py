@@ -1,7 +1,5 @@
 import streamlit as st
 import pandas as pd
-import requests
-from urllib.parse import urlparse, quote
 from datetime import datetime
 import pytz
 from office365.runtime.auth.user_credential import UserCredential
@@ -127,19 +125,14 @@ def load_data_from_sharepoint():
                 st.sidebar.error("No suitable lists found")
                 return data
         
+        # Get fields and items
         list_fields = target_list.fields.get().execute_query()
-        field_names = [field.properties.get('InternalName', '') for field in list_fields 
-                      if not field.properties.get('Hidden', True) and field.properties.get('InternalName', '')]
-
+        
         all_items = []
         page_size = 1000
         
         caml_query = CamlQuery()
-        caml_query.ViewXml = f"""
-        <View>
-            <RowLimit>{page_size}</RowLimit>
-        </View>
-        """
+        caml_query.ViewXml = f"<View><RowLimit>{page_size}</RowLimit></View>"
         
         items = target_list.get_items(caml_query).execute_query()
         all_items.extend(items)
@@ -177,8 +170,9 @@ def load_data_from_sharepoint():
         
         st.sidebar.success(f"Retrieved {len(all_items)} items from SharePoint")
         
+        # Process component validations
         component_validations_data = []
-        
+        valid_component_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
         field_mapping = {
             'Segment': 'Segment',
             'Supplier': 'Supplier',
@@ -188,8 +182,6 @@ def load_data_from_sharepoint():
             'Process_Code': 'Process_x0020_Code',
             'MPN': 'Supplier_x0020_PN'
         }
-        
-        valid_component_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
 
         for item in all_items:
             item_properties = item.properties
@@ -198,7 +190,6 @@ def load_data_from_sharepoint():
             for key, field in field_mapping.items():
                 if field and field in item_properties:
                     if key == 'Component_Type':
-                        # Extract the exact component type from the Title field
                         title = str(item_properties[field])
                         record[key] = next((ct for ct in valid_component_types if ct in title), "Unknown")
                     else:
@@ -211,7 +202,6 @@ def load_data_from_sharepoint():
                     if prop_key not in ['_ObjectType_', '_ObjectIdentity_', 'FileSystemObjectType', 'ServerRedirectedEmbedUri', 
                                        'ServerRedirectedEmbedUrl', 'ContentTypeId', 'ComplianceAssetId', 'OData__UIVersionString']:
                         if prop_key == 'Title':
-                            # Extract the exact component type from the Title field
                             title = str(prop_value)
                             record['Component_Type'] = next((ct for ct in valid_component_types if ct in title), "Unknown")
                         elif prop_key == 'Segment':
@@ -230,11 +220,10 @@ def load_data_from_sharepoint():
             if record.get('Segment') and (record.get('Supplier') or record.get('Component_Type') or record.get('Process_Code')):
                 component_validations_data.append(record)
         
-        component_validations_df = pd.DataFrame(component_validations_data)
-        data['component_validations_df'] = component_validations_df
+        data['component_validations_df'] = pd.DataFrame(component_validations_data)
         
+        # Process module validations
         module_validation_data = []
-        
         module_field_mapping = {
             'Segment': field_mapping['Segment'],
             'Form_Factor': 'Product_x0020_Family',
@@ -269,8 +258,7 @@ def load_data_from_sharepoint():
             if record.get('Segment') and record.get('Process_Code'):
                 module_validation_data.append(record)
         
-        module_validation_df = pd.DataFrame(module_validation_data)
-        data['module_validation_df'] = module_validation_df
+        data['module_validation_df'] = pd.DataFrame(module_validation_data)
         
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
@@ -295,10 +283,12 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         df = component_validations_df.copy()
         
+        # Convert to lowercase for case-insensitive comparison
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].str.lower()
         
+        # Apply filters
         filters = []
         if segment and 'Segment' in df.columns:
             filters.append(df['Segment'].str.lower() == segment.lower())
@@ -318,6 +308,7 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         else:
             filtered_df = df.copy()
         
+        # Try relaxed filters if no results
         if filtered_df.empty:
             relaxed_filters = []
             if segment and 'Segment' in df.columns:
@@ -336,24 +327,24 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                 for f in relaxed_filters:
                     filtered_df = filtered_df[f]
             
-            if filtered_df.empty:
-                if component_type and 'Component_Type' in df.columns:
-                    component_type_lower = component_type.lower()
-                    type_variations = {
-                        'pmic': ['pmic', 'power', 'power management'],
-                        'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
-                        'temp sensor': ['temp', 'sensor', 'temperature', 'temp sensor'],
-                        'rcd/mrcd': ['rcd', 'mrcd', 'register', 'registering clock driver'],
-                        'data buffer': ['buffer', 'data buffer', 'db'],
-                        'ckd': ['ckd', 'clock driver']
-                    }
-                    
-                    for key, variations in type_variations.items():
-                        if any(var in component_type_lower for var in variations):
-                            component_matches = df[df['Component_Type'].str.contains('|'.join(variations), na=False)]
-                            if not component_matches.empty:
-                                filtered_df = component_matches
-                                break
+            # Try component type variations if still no results
+            if filtered_df.empty and component_type and 'Component_Type' in df.columns:
+                component_type_lower = component_type.lower()
+                type_variations = {
+                    'pmic': ['pmic', 'power', 'power management'],
+                    'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
+                    'temp sensor': ['temp', 'sensor', 'temperature', 'temp sensor'],
+                    'rcd/mrcd': ['rcd', 'mrcd', 'register', 'registering clock driver'],
+                    'data buffer': ['buffer', 'data buffer', 'db'],
+                    'ckd': ['ckd', 'clock driver']
+                }
+                
+                for key, variations in type_variations.items():
+                    if any(var in component_type_lower for var in variations):
+                        component_matches = df[df['Component_Type'].str.contains('|'.join(variations), na=False)]
+                        if not component_matches.empty:
+                            filtered_df = component_matches
+                            break
                 
                 if filtered_df.empty:
                     return "No matching process code found for the given criteria", None, None
@@ -368,93 +359,17 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         process_code = process_codes[0]
         
+        # Extract single character if needed
         if len(process_code) > 1:
-            if segment.lower() == 'client':
-                if component_type.lower() in ['pmic', 'power management']:
-                    process_code = process_code[0]
-                elif component_type.lower() in ['spd/hub', 'spd', 'hub']:
-                    process_code = process_code[0]
-                elif component_type.lower() in ['ckd', 'clock driver']:
-                    process_code = process_code[0]
-            
-            elif segment.lower() == 'server':
-                if component_type.lower() in ['pmic', 'power management']:
-                    process_code = process_code[0]
-                elif component_type.lower() in ['spd/hub', 'spd', 'hub']:
-                    process_code = process_code[0]
-                elif component_type.lower() in ['temp sensor', 'temperature', 'temp']:
-                    process_code = process_code[0]
-                elif component_type.lower() in ['rcd/mrcd', 'rcd', 'mrcd', 'register']:
-                    process_code = process_code[0]
-                elif component_type.lower() in ['data buffer', 'buffer', 'db']:
-                    process_code = process_code[0]
-            
-            if len(process_code) > 1:
-                process_code = process_code[0]
+            process_code = process_code[0]
         
         process_code = process_code.upper()
-        
         component_type_result = filtered_df.iloc[0]['Component_Type'] if 'Component_Type' in filtered_df.columns else "Unknown"
         
         return process_code, component_type_result, filtered_df
     
     except Exception as e:
         return f"Error generating process code: {e}", None, None
-
-def filter_module_process_code(segment, form_factor, speed, module_validation_df):
-    try:
-        if module_validation_df.empty:
-            return "No module validation data available", None
-        
-        df = module_validation_df.copy()
-        
-        for col in ['Segment', 'Form_Factor', 'Speed']:
-            if col in df.columns:
-                df[col] = df[col].str.lower()
-        
-        filters = []
-        if segment and 'Segment' in df.columns:
-            filters.append(df['Segment'] == segment.lower())
-        if form_factor and 'Form_Factor' in df.columns:
-            filters.append(df['Form_Factor'] == form_factor.lower())
-        if speed and 'Speed' in df.columns:
-            filters.append(df['Speed'] == speed.lower())
-        
-        if filters:
-            filtered_df = df.copy()
-            for f in filters:
-                filtered_df = filtered_df[f]
-        else:
-            filtered_df = df.copy()
-        
-        if filtered_df.empty:
-            relaxed_filters = []
-            if segment and 'Segment' in df.columns:
-                relaxed_filters.append(df['Segment'].str.contains(segment.lower(), na=False))
-            if form_factor and 'Form_Factor' in df.columns:
-                relaxed_filters.append(df['Form_Factor'].str.contains(form_factor.lower(), na=False))
-            if speed and 'Speed' in df.columns:
-                relaxed_filters.append(df['Speed'].str.contains(speed.lower(), na=False))
-            
-            if relaxed_filters:
-                filtered_df = df.copy()
-                for f in relaxed_filters:
-                    filtered_df = filtered_df[f]
-            
-            if filtered_df.empty:
-                return "No matching process code found for the given criteria", None
-        
-        process_code = filtered_df.iloc[0]['Process_Code']
-        
-        component_codes = {}
-        for component in ['PMIC', 'SPD_Hub', 'Temp_Sensor', 'RCD_MRCD', 'Data_Buffer']:
-            if component in filtered_df.columns and not pd.isna(filtered_df.iloc[0][component]):
-                component_codes[component] = filtered_df.iloc[0][component]
-        
-        return process_code, filtered_df
-    
-    except Exception as e:
-        return f"Error generating process code: {e}", None
 
 def get_module_process_code(pmic, spd_hub, temp_sensor, rcd_mrcd, data_buffer, segment):
     try:
@@ -491,7 +406,6 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
             return "No component validation data available"
         
         component_codes = list(process_code)
-        
         result_parts = []
         
         for i, code in enumerate(component_codes):
@@ -538,29 +452,19 @@ def explain_process_code(process_code, segment):
     explanation.append("Component Breakdown:")
     
     if segment.lower() == 'server':
+        components = ["PMIC", "SPD/Hub", "Temp Sensor", "RCD/MRCD", "Data Buffer"]
         for i, char in enumerate(process_code):
-            if i == 0:
-                explanation.append(f"Position 1: PMIC - {char}")
-            elif i == 1:
-                explanation.append(f"Position 2: SPD/Hub - {char}")
-            elif i == 2:
-                explanation.append(f"Position 3: Temp Sensor - {char}")
-            elif i == 3:
-                explanation.append(f"Position 4: RCD/MRCD - {char}")
-            elif i == 4:
-                explanation.append(f"Position 5: Data Buffer - {char}")
+            if i < len(components):
+                explanation.append(f"Position {i+1}: {components[i]} - {char}")
         
         explanation.append("\nProcess Code Print Order (as shown on product label):")
         explanation.append("PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer (if applicable)")
     
     elif segment.lower() == 'client':
+        components = ["PMIC", "SPD/Hub", "CKD"]
         for i, char in enumerate(process_code):
-            if i == 0:
-                explanation.append(f"Position 1: PMIC - {char}")
-            elif i == 1:
-                explanation.append(f"Position 2: SPD/Hub - {char}")
-            elif i == 2:
-                explanation.append(f"Position 3: CKD - {char}")
+            if i < len(components):
+                explanation.append(f"Position {i+1}: {components[i]} - {char}")
         
         explanation.append("\nProcess Code Print Order (as shown on product label):")
         explanation.append("PMIC → SPD/Hub → CKD (if applicable)")
@@ -578,60 +482,25 @@ def get_predefined_options(component_validations_df):
                     "SAMSUNG", "SEMCO", "SILERGY", "TAIYO YUDEN", "TI", "YAGEO"],
         'component_generation': ["5000", "5010", "5020", "5030", "5100", "5120", "5200", 
                                 "Gen1", "Gen2", "Gen3", "Gen4", "Gen5", "NA"],
-        'revision': ["01", "01/A0", "3", "A0", "A0/01", "A0/ES0", "A00", "A1", "A2", "A3", 
-                    "A4", "A5", "A6", "B0", "B0/ES1", "B0/G1A", "B08", "B1", "B1A", "B2", 
-                    "B2-A", "B3", "C0", "C1", "C2", "C3", "C5", "D0", "D1", "D1/G1EX", "D2", 
-                    "D3", "D5", "E0", "G1A", "G1B", "G1DX", "G1E", "MB2", "PG3.2", "R0", "R1", 
-                    "R1.1", "R1.2", "R1.3", "R2", "R3.5", "R4.0", "R6.0", "R6.1", "R6.2", "X2"],
+        'revision': ["01", "A0", "A1", "B0", "B1", "C0", "D0", "E0"],
         'component_type': ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
     }
     
     if not component_validations_df.empty:
         try:
-            default_options['segment'] = ["Client", "Server"]
-            
-            if 'Supplier' in component_validations_df.columns:
-                suppliers = component_validations_df['Supplier'].dropna().unique().tolist()
-                if suppliers:
-                    cleaned_suppliers = []
-                    for supplier in suppliers:
-                        if supplier and supplier.strip() and supplier.strip() not in cleaned_suppliers:
-                            cleaned_suppliers.append(supplier.strip())
-                    
-                    if cleaned_suppliers:
-                        default_options['supplier'] = sorted(cleaned_suppliers)
-            
-            if 'Component_Generation' in component_validations_df.columns:
-                gens = component_validations_df['Component_Generation'].dropna().unique().tolist()
-                if gens:
-                    cleaned_gens = []
-                    for gen in gens:
-                        if gen and gen.strip() and gen.strip() not in cleaned_gens:
-                            cleaned_gens.append(gen.strip())
-                    
-                    if cleaned_gens:
-                        default_options['component_generation'] = sorted(cleaned_gens)
-            
-            if 'Revision' in component_validations_df.columns:
-                revs = component_validations_df['Revision'].dropna().unique().tolist()
-                if revs:
-                    cleaned_revs = []
-                    for rev in revs:
-                        if rev and rev.strip() and rev.strip() not in cleaned_revs:
-                            cleaned_revs.append(rev.strip())
-                    
-                    if cleaned_revs:
-                        default_options['revision'] = sorted(cleaned_revs)
-            
-            if 'Component_Type' in component_validations_df.columns:
-                types = component_validations_df['Component_Type'].dropna().unique().tolist()
-                if types:
-                    valid_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
-                    cleaned_types = [t.strip() for t in types if t.strip() in valid_types]
-                    if cleaned_types:
-                        default_options['component_type'] = sorted(cleaned_types)
-                    else:
-                        default_options['component_type'] = valid_types
+            # Extract options from data
+            for field, col_name in {
+                'supplier': 'Supplier', 
+                'component_generation': 'Component_Generation',
+                'revision': 'Revision',
+                'component_type': 'Component_Type'
+            }.items():
+                if col_name in component_validations_df.columns:
+                    values = component_validations_df[col_name].dropna().unique().tolist()
+                    if values:
+                        cleaned_values = [v.strip() for v in values if v and v.strip()]
+                        if cleaned_values:
+                            default_options[field] = sorted(list(set(cleaned_values)))
         
         except Exception as e:
             st.sidebar.warning(f"Error extracting options from data: {e}")
@@ -644,6 +513,7 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     
     filtered_df = df.copy()
     
+    # Apply filters
     if segment and 'Segment' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
     
@@ -669,12 +539,9 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     if filtered_df.empty:
         return []
     
+    # Extract unique values
     options = filtered_df[field].dropna().unique().tolist()
-    
-    cleaned_options = []
-    for option in options:
-        if option and option not in cleaned_options:
-            cleaned_options.append(option)
+    cleaned_options = list(set([option for option in options if option]))
     
     if field == 'Segment':
         valid_segments = ["Client", "Server"]
@@ -696,21 +563,17 @@ def main():
         st.rerun()
     
     data = load_data_from_sharepoint()
-    
     component_validations_df = data['component_validations_df']
     module_validation_df = data['module_validation_df']
     
     predefined_options = get_predefined_options(component_validations_df)
     
+    # Show last refresh time
     local_timezone = pytz.timezone('America/Denver')  
     local_time_obj = datetime.now(local_timezone)
     formatted_time = local_time_obj.strftime('%Y-%m-%d %H:%M:%S')
     tz_abbr = local_time_obj.strftime('%Z')
     st.sidebar.info(f"Data last refreshed: {formatted_time} {tz_abbr}")
-
-    
-    if 'active_tab' not in st.session_state:
-        st.session_state.active_tab = "process_code"
     
     tab1, tab2 = st.tabs(["Process Code Generator", "Part Specification Generator"])
     
@@ -720,8 +583,8 @@ def main():
         with subtab1:
             st.write("Enter the component details to generate a single component process code:")
             
+            # Component process code generator
             selected_segment = st.selectbox("Segment", options=predefined_options['segment'], key="segment_component")
-            
             selected_component_type = st.selectbox("Component Type", options=predefined_options['component_type'], key="component_type")
             
             supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
@@ -763,151 +626,69 @@ def main():
         with subtab2:
             st.write("Enter the module component details to generate a combined module process code:")
             
-            st.subheader("PMIC")
-            pmic_segment = st.selectbox("Segment", options=predefined_options['segment'], key="pmic_segment")
+            # Module process code generator - simplified
+            components = {
+                "PMIC": {"required": True},
+                "SPD/Hub": {"required": True},
+                "Temp Sensor": {"required": False},
+                "RCD/MRCD": {"required": False},
+                "Data Buffer": {"required": False}
+            }
             
-            pmic_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                                       segment=pmic_segment, component_type="PMIC") or predefined_options['supplier']
-            pmic_supplier = st.selectbox("Supplier", options=pmic_supplier_options, key="pmic_supplier")
+            component_codes = {}
             
-            pmic_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                  segment=pmic_segment, supplier=pmic_supplier) or predefined_options['component_generation']
-            pmic_gen = st.selectbox("Component Generation", options=pmic_gen_options, key="pmic_gen")
-            
-            pmic_rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                 segment=pmic_segment, supplier=pmic_supplier) or predefined_options['revision']
-            pmic_rev = st.selectbox("Revision", options=pmic_rev_options, key="pmic_rev")
-            
-            pmic_code, _, _ = get_component_process_code(
-                pmic_segment, pmic_supplier, pmic_gen, pmic_rev, "PMIC", component_validations_df
-            )
-            if isinstance(pmic_code, str) and not pmic_code.startswith("No matching") and not pmic_code.startswith("Error"):
-                st.success(f"PMIC Process Code: {pmic_code}")
-            else:
-                st.error(f"PMIC Process Code: {pmic_code}")
-            
-            st.subheader("SPD/Hub")
-            spd_segment = st.selectbox("Segment", options=predefined_options['segment'], key="spd_segment")
-            
-            spd_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                                      segment=spd_segment, component_type="SPD/Hub") or predefined_options['supplier']
-            spd_supplier = st.selectbox("Supplier", options=spd_supplier_options, key="spd_supplier")
-            
-            spd_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                 segment=spd_segment, supplier=spd_supplier) or predefined_options['component_generation']
-            spd_gen = st.selectbox("Component Generation", options=spd_gen_options, key="spd_gen")
-            
-            spd_rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                segment=spd_segment, supplier=spd_supplier) or predefined_options['revision']
-            spd_rev = st.selectbox("Revision", options=spd_rev_options, key="spd_rev")
-            
-            spd_code, _, _ = get_component_process_code(
-                spd_segment, spd_supplier, spd_gen, spd_rev, "SPD/Hub", component_validations_df
-            )
-            if isinstance(spd_code, str) and not spd_code.startswith("No matching") and not spd_code.startswith("Error"):
-                st.success(f"SPD/Hub Process Code: {spd_code}")
-            else:
-                st.error(f"SPD/Hub Process Code: {spd_code}")
-            
-            st.subheader("Temp Sensor")
-            temp_segment = st.selectbox("Segment", options=predefined_options['segment'], key="temp_segment")
-            
-            temp_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                                       segment=temp_segment, component_type="Temp Sensor") or predefined_options['supplier']
-            temp_supplier_options = temp_supplier_options + ["None"]
-            temp_supplier = st.selectbox("Supplier", options=temp_supplier_options, key="temp_supplier")
-            
-            if temp_supplier != "None":
-                temp_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                      segment=temp_segment, supplier=temp_supplier) or predefined_options['component_generation']
-                temp_gen = st.selectbox("Component Generation", options=temp_gen_options, key="temp_gen")
+            for component_name, config in components.items():
+                st.subheader(component_name)
+                component_key = component_name.replace("/", "_").replace(" ", "_").lower()
                 
-                temp_rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                     segment=temp_segment, supplier=temp_supplier) or predefined_options['revision']
-                temp_rev = st.selectbox("Revision", options=temp_rev_options, key="temp_rev")
+                segment = st.selectbox("Segment", options=predefined_options['segment'], key=f"{component_key}_segment")
                 
-                temp_code, _, _ = get_component_process_code(
-                    temp_segment, temp_supplier, temp_gen, temp_rev, "Temp Sensor", component_validations_df
-                )
-                if isinstance(temp_code, str) and not temp_code.startswith("No matching") and not temp_code.startswith("Error"):
-                    st.success(f"Temp Sensor Process Code: {temp_code}")
+                supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                      segment=segment, component_type=component_name) or predefined_options['supplier']
+                
+                if not config["required"]:
+                    supplier_options = supplier_options + ["None"]
+                
+                supplier = st.selectbox("Supplier", options=supplier_options, key=f"{component_key}_supplier")
+                
+                if supplier != "None":
+                    gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                     segment=segment, supplier=supplier) or predefined_options['component_generation']
+                    gen = st.selectbox("Component Generation", options=gen_options, key=f"{component_key}_gen")
+                    
+                    rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                    segment=segment, supplier=supplier) or predefined_options['revision']
+                    rev = st.selectbox("Revision", options=rev_options, key=f"{component_key}_rev")
+                    
+                    code, _, _ = get_component_process_code(
+                        segment, supplier, gen, rev, component_name, component_validations_df
+                    )
+                    
+                    if isinstance(code, str) and not code.startswith("No matching") and not code.startswith("Error"):
+                        st.success(f"{component_name} Process Code: {code}")
+                        component_codes[component_key] = code
+                    else:
+                        st.error(f"{component_name} Process Code: {code}")
+                        component_codes[component_key] = ""
                 else:
-                    st.error(f"Temp Sensor Process Code: {temp_code}")
-            else:
-                temp_code = ""
-            
-            st.subheader("RCD/MRCD")
-            rcd_segment = st.selectbox("Segment", options=predefined_options['segment'], key="rcd_segment")
-            
-            rcd_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                                      segment=rcd_segment, component_type="RCD/MRCD") or predefined_options['supplier']
-            rcd_supplier_options = rcd_supplier_options + ["None"]
-            rcd_supplier = st.selectbox("Supplier", options=rcd_supplier_options, key="rcd_supplier")
-            
-            if rcd_supplier != "None":
-                rcd_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                     segment=rcd_segment, supplier=rcd_supplier) or predefined_options['component_generation']
-                rcd_gen = st.selectbox("Component Generation", options=rcd_gen_options, key="rcd_gen")
-                
-                rcd_rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                    segment=rcd_segment, supplier=rcd_supplier) or predefined_options['revision']
-                rcd_rev = st.selectbox("Revision", options=rcd_rev_options, key="rcd_rev")
-                
-                rcd_code, _, _ = get_component_process_code(
-                    rcd_segment, rcd_supplier, rcd_gen, rcd_rev, "RCD/MRCD", component_validations_df
-                )
-                if isinstance(rcd_code, str) and not rcd_code.startswith("No matching") and not rcd_code.startswith("Error"):
-                    st.success(f"RCD/MRCD Process Code: {rcd_code}")
-                else:
-                    st.error(f"RCD/MRCD Process Code: {rcd_code}")
-            else:
-                rcd_code = ""
-            
-            st.subheader("Data Buffer")
-            db_segment = st.selectbox("Segment", options=predefined_options['segment'], key="db_segment")
-            
-            db_supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                                     segment=db_segment, component_type="Data Buffer") or predefined_options['supplier']
-            db_supplier_options = db_supplier_options + ["None"]
-            db_supplier = st.selectbox("Supplier", options=db_supplier_options, key="db_supplier")
-            
-            if db_supplier != "None":
-                db_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                    segment=db_segment, supplier=db_supplier) or predefined_options['component_generation']
-                db_gen = st.selectbox("Component Generation", options=db_gen_options, key="db_gen")
-                
-                db_rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                   segment=db_segment, supplier=db_supplier) or predefined_options['revision']
-                db_rev = st.selectbox("Revision", options=db_rev_options, key="db_rev")
-                
-                db_code, _, _ = get_component_process_code(
-                    db_segment, db_supplier, db_gen, db_rev, "Data Buffer", component_validations_df
-                )
-                if isinstance(db_code, str) and not db_code.startswith("No matching") and not db_code.startswith("Error"):
-                    st.success(f"Data Buffer Process Code: {db_code}")
-                else:
-                    st.error(f"Data Buffer Process Code: {db_code}")
-            else:
-                db_code = ""
+                    component_codes[component_key] = ""
             
             if st.button("Generate Module Process Code"):
-                st.session_state.active_tab = "module_process_code"
+                module_segment = component_codes.get("pmic_segment", "")
                 
-                module_segment = pmic_segment
-                
-                if pmic_code.startswith("No matching") or pmic_code.startswith("Error"):
+                # Validate required components
+                if not component_codes.get("pmic", ""):
                     st.error("Invalid PMIC process code. Please check PMIC selection.")
-                elif spd_code.startswith("No matching") or spd_code.startswith("Error"):
+                elif not component_codes.get("spd_hub", ""):
                     st.error("Invalid SPD/Hub process code. Please check SPD/Hub selection.")
-                elif temp_supplier != "None" and (temp_code.startswith("No matching") or temp_code.startswith("Error")):
-                    st.error("Invalid Temp Sensor process code. Please check Temp Sensor selection.")
-                elif rcd_supplier != "None" and (rcd_code.startswith("No matching") or rcd_code.startswith("Error")):
-                    st.error("Invalid RCD/MRCD process code. Please check RCD/MRCD selection.")
-                elif db_supplier != "None" and (db_code.startswith("No matching") or db_code.startswith("Error")):
-                    st.error("Invalid Data Buffer process code. Please check Data Buffer selection.")
                 else:
                     process_code = get_module_process_code(
-                        pmic_code, spd_code, temp_code, rcd_code, db_code, module_segment
+                        component_codes.get("pmic", ""),
+                        component_codes.get("spd_hub", ""),
+                        component_codes.get("temp_sensor", ""),
+                        component_codes.get("rcd_mrcd", ""),
+                        component_codes.get("data_buffer", ""),
+                        module_segment
                     )
                     
                     if process_code.startswith("For server") or process_code.startswith("For client") or process_code.startswith("Unknown"):
@@ -915,44 +696,24 @@ def main():
                     else:
                         st.success(f"Generated Module Process Code: {process_code}")
                         
+                        # Generate print order
                         if module_segment.lower() == 'server':
                             component_chars = list(process_code)
                             print_order = []
                             
-                            if len(component_chars) > 0:
-                                print_order.append(component_chars[0])
-                                
-                            if len(component_chars) > 3:
-                                print_order.append(component_chars[3])
-                                
-                            if len(component_chars) > 1:
-                                print_order.append(component_chars[1])
-                                
-                            if len(component_chars) > 2:
-                                print_order.append(component_chars[2])
-                                
-                            if len(component_chars) > 4:
-                                print_order.append(component_chars[4])
-                                
+                            # PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer
+                            positions = [0, 3, 1, 2, 4]  # Positions in process code
+                            for pos in positions:
+                                if pos < len(component_chars):
+                                    print_order.append(component_chars[pos])
+                                    
                             print_code = ''.join(print_order)
                             st.success(f"Generated Module Process Print Code: {print_code}")
                             st.caption("(Print order: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer)")
                             
                         elif module_segment.lower() == 'client':
-                            component_chars = list(process_code)
-                            print_order = []
-                            
-                            if len(component_chars) > 0:
-                                print_order.append(component_chars[0])
-                                
-                            if len(component_chars) > 1:
-                                print_order.append(component_chars[1])
-                                
-                            if len(component_chars) > 2:
-                                print_order.append(component_chars[2])
-                                
-                            print_code = ''.join(print_order)
-                            st.success(f"Generated Module Process Print Code: {print_code}")
+                            # For client, print order is the same as process code
+                            st.success(f"Generated Module Process Print Code: {process_code}")
                             st.caption("(Print order: PMIC → SPD/Hub → CKD)")
                         
                         explanation = explain_process_code(process_code, module_segment)
@@ -982,12 +743,7 @@ def main():
                     for col in parts_lookup.columns:
                         parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
                             
-                    st.dataframe(parts_lookup.style.set_properties(**{
-                        'white-space': 'pre-wrap',
-                        'text-align': 'left'
-                    }).set_table_styles([
-                        {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
-                        {'selector': 'td', 'props': [('text-align', 'left')]}
-                    ]), height=400)
+                    st.dataframe(parts_lookup, height=400)
+
 if __name__ == "__main__":
     main()
