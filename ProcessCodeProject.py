@@ -563,7 +563,7 @@ def main():
     tz_abbr = local_time_obj.strftime('%Z')
     st.sidebar.info(f"Data last refreshed: {formatted_time} {tz_abbr}")
     
-    tab1, tab2 = st.tabs(["Module Process Code Lookup", "Process Code Generator"])
+    tab1, tab2 = st.tabs(["Module Process Code Lookup", "Module Process Code Generator"])
     
     with tab1:
         st.write("Enter a process code to look up the associated parts:")
