@@ -352,6 +352,9 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         process_code = process_codes[0]
         
+        if process_code.lower() == "none" or not process_code:
+            return "", filtered_df.iloc[0]['Component_Type'] if 'Component_Type' in filtered_df.columns else "Unknown", filtered_df
+        
         if len(process_code) > 1:
             process_code = process_code[0]
         
