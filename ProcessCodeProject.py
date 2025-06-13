@@ -284,9 +284,12 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
             if df[col].dtype == 'object':
                 df[col] = df[col].str.lower()
         
-        filters = []
         if segment and 'Segment' in df.columns:
-            filters.append(df['Segment'].str.lower() == segment.lower())
+            df = df[df['Segment'].str.lower() == segment.lower()]
+            if df.empty:
+                return f"No components found for segment: {segment}", None, None
+        
+        filters = []
         if supplier and 'Supplier' in df.columns:
             filters.append(df['Supplier'].str.lower() == supplier.lower())
         if component_gen and 'Component_Generation' in df.columns:
@@ -294,10 +297,18 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         if revision and 'Revision' in df.columns:
             filters.append(df['Revision'].str.lower() == revision.lower())
         if component_type and 'Component_Type' in df.columns:
-            if 'rcd/mrcd' in component_type.lower():
-                filters.append(df['Component_Type'].str.lower().isin(['rcd', 'muxed rcd']))
+            if segment and segment.lower() == 'client':
+                if 'ckd' in component_type.lower():
+                    filters.append(df['Component_Type'].str.lower() == 'ckd')
+                elif 'spd/hub' in component_type.lower():
+                    filters.append(df['Component_Type'].str.lower() == 'spd/hub')
+                elif 'pmic' in component_type.lower():
+                    filters.append(df['Component_Type'].str.lower() == 'pmic')
             else:
-                filters.append(df['Component_Type'].str.lower() == component_type.lower())
+                if 'rcd/mrcd' in component_type.lower():
+                    filters.append(df['Component_Type'].str.lower().isin(['rcd', 'muxed rcd']))
+                else:
+                    filters.append(df['Component_Type'].str.lower() == component_type.lower())
         
         if filters:
             filtered_df = df.copy()
@@ -308,8 +319,6 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         if filtered_df.empty:
             relaxed_filters = []
-            if segment and 'Segment' in df.columns:
-                relaxed_filters.append(df['Segment'].str.contains(segment.lower(), na=False))
             if supplier and 'Supplier' in df.columns:
                 relaxed_filters.append(df['Supplier'].str.contains(supplier.lower(), na=False))
             if component_gen and 'Component_Generation' in df.columns:
@@ -317,10 +326,18 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
             if revision and 'Revision' in df.columns:
                 relaxed_filters.append(df['Revision'].str.contains(revision.lower(), na=False))
             if component_type and 'Component_Type' in df.columns:
-                if 'rcd/mrcd' in component_type.lower():
-                    relaxed_filters.append(df['Component_Type'].str.lower().str.contains('rcd|muxed', na=False))
+                if segment and segment.lower() == 'client':
+                    if 'ckd' in component_type.lower():
+                        relaxed_filters.append(df['Component_Type'].str.lower().str.contains('ckd|clock', na=False))
+                    elif 'spd/hub' in component_type.lower():
+                        relaxed_filters.append(df['Component_Type'].str.lower().str.contains('spd|hub|serial', na=False))
+                    elif 'pmic' in component_type.lower():
+                        relaxed_filters.append(df['Component_Type'].str.lower().str.contains('pmic|power', na=False))
                 else:
-                    relaxed_filters.append(df['Component_Type'].str.contains(component_type.lower(), na=False))
+                    if 'rcd/mrcd' in component_type.lower():
+                        relaxed_filters.append(df['Component_Type'].str.lower().str.contains('rcd|muxed|register', na=False))
+                    else:
+                        relaxed_filters.append(df['Component_Type'].str.contains(component_type.lower(), na=False))
             
             if relaxed_filters:
                 filtered_df = df.copy()
@@ -329,14 +346,21 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
             
             if filtered_df.empty and component_type and 'Component_Type' in df.columns:
                 component_type_lower = component_type.lower()
-                type_variations = {
-                    'pmic': ['pmic', 'power', 'power management'],
-                    'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
-                    'temp sensor': ['temp', 'sensor', 'temperature', 'temp sensor'],
-                    'rcd/mrcd': ['rcd', 'mrcd', 'register', 'registering clock driver', 'muxed rcd'],
-                    'data buffer': ['buffer', 'data buffer', 'db'],
-                    'ckd': ['ckd', 'clock driver']
-                }
+                
+                if segment and segment.lower() == 'client':
+                    type_variations = {
+                        'pmic': ['pmic', 'power', 'power management'],
+                        'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
+                        'ckd': ['ckd', 'clock driver', 'clock']
+                    }
+                else:
+                    type_variations = {
+                        'pmic': ['pmic', 'power', 'power management'],
+                        'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
+                        'temp sensor': ['temp', 'sensor', 'temperature', 'temp sensor'],
+                        'rcd/mrcd': ['rcd', 'mrcd', 'register', 'registering clock driver', 'muxed rcd'],
+                        'data buffer': ['buffer', 'data buffer', 'db'],
+                    }
                 
                 for key, variations in type_variations.items():
                     if any(var in component_type_lower for var in variations):
@@ -346,7 +370,7 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                             break
                 
                 if filtered_df.empty:
-                    return "No matching process code found for the given criteria", None, None
+                    return f"No matching process code found for {component_type} in {segment} segment", None, None
         
         if 'Process_Code' not in filtered_df.columns or filtered_df['Process_Code'].isna().all():
             return "Process code information not available in the data", None, None
@@ -519,20 +543,30 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     if supplier and 'Supplier' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Supplier'].str.lower() == supplier.lower()]
     
+    # For supplier field, apply component-specific filtering
     if field == 'Supplier' and component_type:
         component_type_lower = component_type.lower()
         
-        component_supplier_mapping = {
-            'pmic': ['ANPEC', 'MICRON', 'MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'RICHTEK', 'SAMSUNG', 'TI'],
-            'spd/hub': ['MONTAGE', 'MPS', 'RAMBUS', 'RENESAS'],
-            'temp sensor': ['MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'TI'],
-            'rcd': ['MONTAGE', 'ONESEMI', 'RAMBUS', 'RENESAS'],
-            'muxed rcd': ['MONTAGE', 'ONESEMI', 'RAMBUS', 'RENESAS'],
-            'data buffer': ['MONTAGE', 'RAMBUS', 'RENESAS'],
-            'ckd': ['MONTAGE', 'RAMBUS', 'RENESAS'],
-            'inductor': ['ALPS', 'BOURNS', 'PULSE', 'SEMCO', 'TAIYO YUDEN', 'YAGEO'],
-            'voltage regulator': ['DIODES', 'LITTELFUSE', 'PANASONIC', 'SILERGY']
-        }
+        # Define valid suppliers for each component type, considering segment
+        if segment and segment.lower() == 'client':
+            component_supplier_mapping = {
+                'pmic': ['ANPEC', 'MICRON', 'MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'RICHTEK', 'SAMSUNG', 'TI'],
+                'spd/hub': ['MONTAGE', 'MPS', 'RAMBUS', 'RENESAS'],
+                'ckd': ['MONTAGE', 'RAMBUS', 'RENESAS'],
+                'inductor': ['ALPS', 'BOURNS', 'PULSE', 'SEMCO', 'TAIYO YUDEN', 'YAGEO'],
+                'voltage regulator': ['DIODES', 'LITTELFUSE', 'PANASONIC', 'SILERGY']
+            }
+        else:  # Server segment or unspecified
+            component_supplier_mapping = {
+                'pmic': ['ANPEC', 'MICRON', 'MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'RICHTEK', 'SAMSUNG', 'TI'],
+                'spd/hub': ['MONTAGE', 'MPS', 'RAMBUS', 'RENESAS'],
+                'temp sensor': ['MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'TI'],
+                'rcd': ['MONTAGE', 'ONESEMI', 'RAMBUS', 'RENESAS'],
+                'muxed rcd': ['MONTAGE', 'ONESEMI', 'RAMBUS', 'RENESAS'],
+                'data buffer': ['MONTAGE', 'RAMBUS', 'RENESAS'],
+                'inductor': ['ALPS', 'BOURNS', 'PULSE', 'SEMCO', 'TAIYO YUDEN', 'YAGEO'],
+                'voltage regulator': ['DIODES', 'LITTELFUSE', 'PANASONIC', 'SILERGY']
+            }
         
         for key, suppliers in component_supplier_mapping.items():
             if key in component_type_lower or (key == 'rcd' and 'rcd/mrcd' in component_type_lower):
@@ -541,11 +575,23 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     if field == 'Component_Generation' and component_type:
         component_type_lower = component_type.lower()
         
-        if any(ct in component_type_lower for ct in ['temp sensor', 'rcd', 'mrcd', 'data buffer']):
-            gen_options = [opt for opt in filtered_df[field].dropna().unique() 
-                          if isinstance(opt, str) and opt.lower().startswith('gen')]
-            if gen_options:
-                return sorted(gen_options)
+        if segment and segment.lower() == 'client':
+            if 'pmic' in component_type_lower:
+                gen_options = [opt for opt in filtered_df[field].dropna().unique() 
+                              if isinstance(opt, str) and any(c.isdigit() for c in opt)]
+                if gen_options:
+                    return sorted(gen_options)
+            elif 'spd/hub' in component_type_lower or 'ckd' in component_type_lower:
+                gen_options = [opt for opt in filtered_df[field].dropna().unique() 
+                              if isinstance(opt, str) and opt.lower().startswith('gen')]
+                if gen_options:
+                    return sorted(gen_options)
+        else:
+            if any(ct in component_type_lower for ct in ['temp sensor', 'rcd', 'mrcd', 'data buffer']):
+                gen_options = [opt for opt in filtered_df[field].dropna().unique() 
+                              if isinstance(opt, str) and opt.lower().startswith('gen')]
+                if gen_options:
+                    return sorted(gen_options)
     
     if filtered_df.empty:
         return []
