@@ -113,8 +113,7 @@ def load_data_from_sharepoint():
         all_lists = ctx.web.lists.get().execute_query()
         available_lists = [list_item.properties.get('Title', '') for list_item in all_lists]
         
-        with st.sidebar.expander("Available SharePoint Lists", expanded=False):
-            st.write(", ".join(available_lists))
+        # Removed the expander for available SharePoint lists
         
         if list_name not in available_lists:
             st.sidebar.warning(f"List '{list_name}' not found. Looking for similar lists...")
@@ -133,8 +132,7 @@ def load_data_from_sharepoint():
         field_names = [field.properties.get('InternalName', '') for field in list_fields 
                       if not field.properties.get('Hidden', True) and field.properties.get('InternalName', '')]
         
-        with st.sidebar.expander("Available Fields", expanded=False):
-            st.write(", ".join(field_names))
+        # Removed the expander for available fields
 
         all_items = []
         page_size = 1000
@@ -182,9 +180,7 @@ def load_data_from_sharepoint():
         
         st.sidebar.success(f"Retrieved {len(all_items)} items from SharePoint")
         
-        if all_items:
-            with st.sidebar.expander("Sample Item Properties", expanded=False):
-                st.write(list(all_items[0].properties.keys()))
+        # Removed the expander for sample item properties
         
         component_validations_data = []
         
@@ -198,8 +194,7 @@ def load_data_from_sharepoint():
             'MPN': 'Supplier_x0020_PN'
         }
         
-        with st.sidebar.expander("Field Mapping", expanded=False):
-            st.write(field_mapping)
+        # Removed the expander for field mapping
         
         valid_component_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
 
@@ -245,10 +240,8 @@ def load_data_from_sharepoint():
         component_validations_df = pd.DataFrame(component_validations_data)
         data['component_validations_df'] = component_validations_df
         
-        st.sidebar.success(f"Successfully loaded {len(component_validations_data)} component validations from SharePoint")
-        
-        with st.sidebar.expander("Sample Data (First 5 Rows)", expanded=False):
-            st.dataframe(component_validations_df.head())
+        # Removed the success message for component validations
+        # Removed the expander for sample data
         
         module_validation_data = []
         
@@ -289,8 +282,7 @@ def load_data_from_sharepoint():
         module_validation_df = pd.DataFrame(module_validation_data)
         data['module_validation_df'] = module_validation_df
         
-        if not module_validation_df.empty:
-            st.sidebar.success(f"Successfully loaded {len(module_validation_data)} module validations from SharePoint")
+        # Removed the success message for module validations
         
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
