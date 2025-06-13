@@ -753,8 +753,6 @@ def main():
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "process_code"
     
-    part = PartSpecification()
-    
     tab1, tab2 = st.tabs(["Process Code Generator", "Part Specification Generator"])
     
     with tab1:
@@ -963,26 +961,24 @@ def main():
                         explanation = explain_process_code(process_code, module_segment)
                         st.info(explanation)
                         
-                parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
-                if isinstance(parts_lookup, str):
-                    st.warning(parts_lookup)
-                else:
-                    st.subheader("Component Details")
-                    
-                    # Capitalize all string columns
-                    for col in parts_lookup.columns:
-                        parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
-                    
-                    # Display the DataFrame as a table with adjusted column widths
-                    st.dataframe(parts_lookup.style.set_properties(**{
-                        'white-space': 'pre-wrap',
-                        'text-align': 'left'
-                    }).set_table_styles([
-                        {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
-                        {'selector': 'td', 'props': [('text-align', 'left')]}
-                    ]), height=400)
-                    
-                    part_spec.set_associated_parts(parts_lookup.to_string())
+                        parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
+                        if isinstance(parts_lookup, str):
+                            st.warning(parts_lookup)
+                        else:
+                            st.subheader("Component Details")
+                            
+                            # Capitalize all string columns
+                            for col in parts_lookup.columns:
+                                parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
+                            
+                            # Display the DataFrame as a table with adjusted column widths
+                            st.dataframe(parts_lookup.style.set_properties(**{
+                                'white-space': 'pre-wrap',
+                                'text-align': 'left'
+                            }).set_table_styles([
+                                {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
+                                {'selector': 'td', 'props': [('text-align', 'left')]}
+                            ]), height=400)
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
