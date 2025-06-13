@@ -597,117 +597,117 @@ def main():
     with tab2:
         subtab2, subtab1 = st.tabs(["Module", "Component"])
         
-with subtab2:
-    st.write("Enter the module component details to generate a combined module process code:")
-    
-    # Single segment selection at the top
-    module_segment = st.selectbox("Segment", options=predefined_options['segment'], key="module_segment")
-    
-    # Define components based on segment
-    if module_segment.lower() == 'client':
-        components = {
-            "PMIC": {"required": True},
-            "SPD/Hub": {"required": True},
-            "CKD": {"required": False}
-        }
-    else:  # Server
-        components = {
-            "PMIC": {"required": True},
-            "SPD/Hub": {"required": True},
-            "Temp Sensor": {"required": True},
-            "RCD/MRCD": {"required": True},
-            "Data Buffer": {"required": False}
-        }
-    
-    component_codes = {}
-    
-    for component_name, config in components.items():
-        st.subheader(component_name)
-        component_key = component_name.replace("/", "_").replace(" ", "_").lower()
-        
-        # Use the module segment for all components
-        component_codes[f"{component_key}_segment"] = module_segment
-        
-        supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                              segment=module_segment, component_type=component_name) or predefined_options['supplier']
-        
-        if not config["required"]:
-            supplier_options = supplier_options + ["None"]
-        
-        supplier = st.selectbox("Supplier", options=supplier_options, key=f"{component_key}_supplier")
-        
-        if supplier != "None":
-            gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                             segment=module_segment, supplier=supplier) or predefined_options['component_generation']
-            gen = st.selectbox("Component Generation", options=gen_options, key=f"{component_key}_gen")
+        with subtab2:
+            st.write("Enter the module component details to generate a combined module process code:")
             
-            rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                            segment=module_segment, supplier=supplier) or predefined_options['revision']
-            rev = st.selectbox("Revision", options=rev_options, key=f"{component_key}_rev")
+            # Single segment selection at the top
+            module_segment = st.selectbox("Segment", options=predefined_options['segment'], key="module_segment")
             
-            code, _, _ = get_component_process_code(
-                module_segment, supplier, gen, rev, component_name, component_validations_df
-            )
-            
-            if isinstance(code, str) and not code.startswith("No matching") and not code.startswith("Error"):
-                st.success(f"{component_name} Process Code: {code}")
-                component_codes[component_key] = code
-            else:
-                st.error(f"{component_name} Process Code: {code}")
-                component_codes[component_key] = ""
-        else:
-            component_codes[component_key] = ""
-    
-    if st.button("Generate Module Process Code"):
-        if not component_codes.get("pmic", ""):
-            st.error("Invalid PMIC process code. Please check PMIC selection.")
-        elif not component_codes.get("spd_hub", ""):
-            st.error("Invalid SPD/Hub process code. Please check SPD/Hub selection.")
-        else:
-            # For client segment, handle CKD as temp_sensor in the function call
+            # Define components based on segment
             if module_segment.lower() == 'client':
-                process_code = get_module_process_code(
-                    component_codes.get("pmic", ""),
-                    component_codes.get("spd_hub", ""),
-                    component_codes.get("ckd", ""),  # CKD is in the third position for client
-                    "",  # No RCD for client
-                    "",  # No Data Buffer for client
-                    module_segment
-                )
+                components = {
+                    "PMIC": {"required": True},
+                    "SPD/Hub": {"required": True},
+                    "CKD": {"required": False}
+                }
             else:  # Server
-                process_code = get_module_process_code(
-                    component_codes.get("pmic", ""),
-                    component_codes.get("spd_hub", ""),
-                    component_codes.get("temp_sensor", ""),
-                    component_codes.get("rcd_mrcd", ""),
-                    component_codes.get("data_buffer", ""),
-                    module_segment
-                )
+                components = {
+                    "PMIC": {"required": True},
+                    "SPD/Hub": {"required": True},
+                    "Temp Sensor": {"required": True},
+                    "RCD/MRCD": {"required": True},
+                    "Data Buffer": {"required": False}
+                }
             
-            if process_code.startswith("For server") or process_code.startswith("For client") or process_code.startswith("Unknown"):
-                st.error(process_code)
-            else:
-                st.success(f"Generated Module Process Code: {process_code}")
+            component_codes = {}
+            
+            for component_name, config in components.items():
+                st.subheader(component_name)
+                component_key = component_name.replace("/", "_").replace(" ", "_").lower()
                 
-                if module_segment.lower() == 'server':
-                    component_chars = list(process_code)
-                    print_order = []
+                # Use the module segment for all components
+                component_codes[f"{component_key}_segment"] = module_segment
+                
+                supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
+                                                      segment=module_segment, component_type=component_name) or predefined_options['supplier']
+                
+                if not config["required"]:
+                    supplier_options = supplier_options + ["None"]
+                
+                supplier = st.selectbox("Supplier", options=supplier_options, key=f"{component_key}_supplier")
+                
+                if supplier != "None":
+                    gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                     segment=module_segment, supplier=supplier) or predefined_options['component_generation']
+                    gen = st.selectbox("Component Generation", options=gen_options, key=f"{component_key}_gen")
                     
-                    positions = [0, 3, 1, 2, 4]
-                    for pos in positions:
-                        if pos < len(component_chars):
-                            print_order.append(component_chars[pos])
+                    rev_options = get_filtered_options(component_validations_df, 'Revision', 
+                                                    segment=module_segment, supplier=supplier) or predefined_options['revision']
+                    rev = st.selectbox("Revision", options=rev_options, key=f"{component_key}_rev")
+                    
+                    code, _, _ = get_component_process_code(
+                        module_segment, supplier, gen, rev, component_name, component_validations_df
+                    )
+                    
+                    if isinstance(code, str) and not code.startswith("No matching") and not code.startswith("Error"):
+                        st.success(f"{component_name} Process Code: {code}")
+                        component_codes[component_key] = code
+                    else:
+                        st.error(f"{component_name} Process Code: {code}")
+                        component_codes[component_key] = ""
+                else:
+                    component_codes[component_key] = ""
+            
+            if st.button("Generate Module Process Code"):
+                if not component_codes.get("pmic", ""):
+                    st.error("Invalid PMIC process code. Please check PMIC selection.")
+                elif not component_codes.get("spd_hub", ""):
+                    st.error("Invalid SPD/Hub process code. Please check SPD/Hub selection.")
+                else:
+                    # For client segment, handle CKD as temp_sensor in the function call
+                    if module_segment.lower() == 'client':
+                        process_code = get_module_process_code(
+                            component_codes.get("pmic", ""),
+                            component_codes.get("spd_hub", ""),
+                            component_codes.get("ckd", ""),  # CKD is in the third position for client
+                            "",  # No RCD for client
+                            "",  # No Data Buffer for client
+                            module_segment
+                        )
+                    else:  # Server
+                        process_code = get_module_process_code(
+                            component_codes.get("pmic", ""),
+                            component_codes.get("spd_hub", ""),
+                            component_codes.get("temp_sensor", ""),
+                            component_codes.get("rcd_mrcd", ""),
+                            component_codes.get("data_buffer", ""),
+                            module_segment
+                        )
+                    
+                    if process_code.startswith("For server") or process_code.startswith("For client") or process_code.startswith("Unknown"):
+                        st.error(process_code)
+                    else:
+                        st.success(f"Generated Module Process Code: {process_code}")
+                        
+                        if module_segment.lower() == 'server':
+                            component_chars = list(process_code)
+                            print_order = []
                             
-                    print_code = ''.join(print_order)
-                    st.success(f"Generated Module Process Print Code: {print_code}")
-                    st.caption("(Print order: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer)")
-                    
-                elif module_segment.lower() == 'client':
-                    st.success(f"Generated Module Process Print Code: {process_code}")
-                    st.caption("(Print order: PMIC → SPD/Hub → CKD)")
-                
-                explanation = explain_process_code(process_code, module_segment)
-                st.info(explanation)
+                            positions = [0, 3, 1, 2, 4]
+                            for pos in positions:
+                                if pos < len(component_chars):
+                                    print_order.append(component_chars[pos])
+                                    
+                            print_code = ''.join(print_order)
+                            st.success(f"Generated Module Process Print Code: {print_code}")
+                            st.caption("(Print order: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer)")
+                            
+                        elif module_segment.lower() == 'client':
+                            st.success(f"Generated Module Process Print Code: {process_code}")
+                            st.caption("(Print order: PMIC → SPD/Hub → CKD)")
+                        
+                        explanation = explain_process_code(process_code, module_segment)
+                        st.info(explanation)
         
         with subtab1:
             st.write("Enter the component details to generate a single component process code:")
