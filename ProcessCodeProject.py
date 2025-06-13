@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from urllib.parse import urlparse, quote
 from datetime import datetime
+import pytz
 from office365.runtime.auth.user_credential import UserCredential
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.listitems.caml.query import CamlQuery
@@ -728,6 +729,11 @@ def main():
     predefined_options = get_predefined_options(component_validations_df)
     
     st.sidebar.info(f"Data last refreshed: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    local_timezone = pytz.timezone('America/Denver')  
+    local_time = datetime.now(local_timezone).strftime('%Y-%m-%d %H:%M:%S')
+    st.sidebar.info(f"Data last refreshed: {local_time}")
+
     
     if 'active_tab' not in st.session_state:
         st.session_state.active_tab = "process_code"
