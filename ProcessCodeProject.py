@@ -295,12 +295,10 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         df = component_validations_df.copy()
         
-        # Convert all string columns to lowercase for case-insensitive comparison
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].str.lower()
         
-        # Create filters based on provided parameters
         filters = []
         if segment and 'Segment' in df.columns:
             filters.append(df['Segment'].str.lower() == segment.lower())
@@ -313,7 +311,6 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         if component_type and 'Component_Type' in df.columns:
             filters.append(df['Component_Type'].str.lower() == component_type.lower())
         
-        # Apply all filters
         if filters:
             filtered_df = df.copy()
             for f in filters:
@@ -321,7 +318,6 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         else:
             filtered_df = df.copy()
         
-        # If no exact matches, try partial matching
         if filtered_df.empty:
             relaxed_filters = []
             if segment and 'Segment' in df.columns:
@@ -341,10 +337,8 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                     filtered_df = filtered_df[f]
             
             if filtered_df.empty:
-                # If still no matches, try even more relaxed matching on component type
                 if component_type and 'Component_Type' in df.columns:
                     component_type_lower = component_type.lower()
-                    # Map common component type variations
                     type_variations = {
                         'pmic': ['pmic', 'power', 'power management'],
                         'spd/hub': ['spd', 'hub', 'spd/hub', 'serial presence detect'],
@@ -364,48 +358,40 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                 if filtered_df.empty:
                     return "No matching process code found for the given criteria", None, None
         
-        # Check if Process_Code column exists and has values
         if 'Process_Code' not in filtered_df.columns or filtered_df['Process_Code'].isna().all():
             return "Process code information not available in the data", None, None
         
-        # Get the process code - should be a single character
         process_codes = filtered_df['Process_Code'].dropna().unique()
         
         if len(process_codes) == 0:
             return "No process code found for the given criteria", None, None
         
-        # If multiple process codes found, try to select the most appropriate one
         process_code = process_codes[0]
         
-        # If process code is longer than one character, try to extract the relevant character
         if len(process_code) > 1:
-            # For client components
             if segment.lower() == 'client':
                 if component_type.lower() in ['pmic', 'power management']:
-                    process_code = process_code[0]  # First character for PMIC
+                    process_code = process_code[0]
                 elif component_type.lower() in ['spd/hub', 'spd', 'hub']:
-                    process_code = process_code[0]  # First character for SPD/Hub
+                    process_code = process_code[0]
                 elif component_type.lower() in ['ckd', 'clock driver']:
-                    process_code = process_code[0]  # First character for CKD
+                    process_code = process_code[0]
             
-            # For server components
             elif segment.lower() == 'server':
                 if component_type.lower() in ['pmic', 'power management']:
-                    process_code = process_code[0]  # First character for PMIC
+                    process_code = process_code[0]
                 elif component_type.lower() in ['spd/hub', 'spd', 'hub']:
-                    process_code = process_code[0]  # First character for SPD/Hub
+                    process_code = process_code[0]
                 elif component_type.lower() in ['temp sensor', 'temperature', 'temp']:
-                    process_code = process_code[0]  # First character for Temp Sensor
+                    process_code = process_code[0]
                 elif component_type.lower() in ['rcd/mrcd', 'rcd', 'mrcd', 'register']:
-                    process_code = process_code[0]  # First character for RCD/MRCD
+                    process_code = process_code[0]
                 elif component_type.lower() in ['data buffer', 'buffer', 'db']:
-                    process_code = process_code[0]  # First character for Data Buffer
+                    process_code = process_code[0]
             
-            # If we couldn't determine which character to use, just take the first one
             if len(process_code) > 1:
                 process_code = process_code[0]
         
-        # Convert the process code to uppercase
         process_code = process_code.upper()
         
         component_type_result = filtered_df.iloc[0]['Component_Type'] if 'Component_Type' in filtered_df.columns else "Unknown"
@@ -532,12 +518,10 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
         result_df = pd.DataFrame(result_parts)
         result_df = result_df.sort_values('Position')
         
-        # Ensure all columns are present, even if empty
         for col in ['Position', 'Process Code', 'Segment', 'Supplier', 'Component Generation', 'Revision', 'Component Type', 'MPN']:
             if col not in result_df.columns:
                 result_df[col] = ""
         
-        # Reorder columns
         result_df = result_df[['Position', 'Process Code', 'Segment', 'Supplier', 'Component Generation', 'Revision', 'Component Type', 'MPN']]
         
         return result_df
@@ -604,13 +588,11 @@ def get_predefined_options(component_validations_df):
     
     if not component_validations_df.empty:
         try:
-            # Ensure we only have valid segments
             default_options['segment'] = ["Client", "Server"]
             
             if 'Supplier' in component_validations_df.columns:
                 suppliers = component_validations_df['Supplier'].dropna().unique().tolist()
                 if suppliers:
-                    # Clean up supplier names
                     cleaned_suppliers = []
                     for supplier in suppliers:
                         if supplier and supplier.strip() and supplier.strip() not in cleaned_suppliers:
@@ -622,7 +604,6 @@ def get_predefined_options(component_validations_df):
             if 'Component_Generation' in component_validations_df.columns:
                 gens = component_validations_df['Component_Generation'].dropna().unique().tolist()
                 if gens:
-                    # Clean up generation values
                     cleaned_gens = []
                     for gen in gens:
                         if gen and gen.strip() and gen.strip() not in cleaned_gens:
@@ -634,7 +615,6 @@ def get_predefined_options(component_validations_df):
             if 'Revision' in component_validations_df.columns:
                 revs = component_validations_df['Revision'].dropna().unique().tolist()
                 if revs:
-                    # Clean up revision values
                     cleaned_revs = []
                     for rev in revs:
                         if rev and rev.strip() and rev.strip() not in cleaned_revs:
@@ -646,7 +626,6 @@ def get_predefined_options(component_validations_df):
             if 'Component_Type' in component_validations_df.columns:
                 types = component_validations_df['Component_Type'].dropna().unique().tolist()
                 if types:
-                    # Clean up component types and ensure we only have the standard types
                     valid_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
                     cleaned_types = [t.strip() for t in types if t.strip() in valid_types]
                     if cleaned_types:
@@ -665,7 +644,6 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     
     filtered_df = df.copy()
     
-    # Apply filters (case-insensitive)
     if segment and 'Segment' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
     
@@ -673,7 +651,6 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
         filtered_df = filtered_df[filtered_df['Supplier'].str.lower() == supplier.lower()]
     
     if component_type and 'Component_Type' in filtered_df.columns:
-        # Handle variations in component type naming
         component_type_lower = component_type.lower()
         type_variations = {
             'pmic': ['pmic', 'power', 'power management'],
@@ -692,16 +669,13 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     if filtered_df.empty:
         return []
     
-    # Get unique values for the requested field
     options = filtered_df[field].dropna().unique().tolist()
     
-    # Clean up options - remove empty strings and duplicates
     cleaned_options = []
     for option in options:
         if option and option not in cleaned_options:
             cleaned_options.append(option)
     
-    # For segment field, ensure we only return Client or Server
     if field == 'Segment':
         valid_segments = ["Client", "Server"]
         cleaned_options = [opt for opt in cleaned_options if opt.lower() in [s.lower() for s in valid_segments]]
@@ -778,12 +752,10 @@ def main():
                     
                     if code_details is not None and not code_details.empty:
                         st.subheader("Component Details")
-                        # Capitalize all string columns in code_details
                         for col in code_details.columns:
                             if code_details[col].dtype == 'object':
                                 code_details[col] = code_details[col].str.upper()
                         
-                        # Display the DataFrame as a table
                         st.table(code_details)
                 else:
                     st.error(process_code)
@@ -943,29 +915,22 @@ def main():
                     else:
                         st.success(f"Generated Module Process Code: {process_code}")
                         
-                        # Add the print order display
                         if module_segment.lower() == 'server':
-                            # For server: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer (if applicable)
                             component_chars = list(process_code)
                             print_order = []
                             
-                            # PMIC (position 0)
                             if len(component_chars) > 0:
                                 print_order.append(component_chars[0])
                                 
-                            # RCD (position 3)
                             if len(component_chars) > 3:
                                 print_order.append(component_chars[3])
                                 
-                            # SPD/Hub (position 1)
                             if len(component_chars) > 1:
                                 print_order.append(component_chars[1])
                                 
-                            # Temp Sensor (position 2)
                             if len(component_chars) > 2:
                                 print_order.append(component_chars[2])
                                 
-                            # Data Buffer (position 4)
                             if len(component_chars) > 4:
                                 print_order.append(component_chars[4])
                                 
@@ -974,19 +939,15 @@ def main():
                             st.caption("(Print order: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer)")
                             
                         elif module_segment.lower() == 'client':
-                            # For client: PMIC → SPD/Hub → CKD (if applicable)
                             component_chars = list(process_code)
                             print_order = []
                             
-                            # PMIC (position 0)
                             if len(component_chars) > 0:
                                 print_order.append(component_chars[0])
                                 
-                            # SPD/Hub (position 1)
                             if len(component_chars) > 1:
                                 print_order.append(component_chars[1])
                                 
-                            # CKD (position 2)
                             if len(component_chars) > 2:
                                 print_order.append(component_chars[2])
                                 
@@ -1018,18 +979,15 @@ def main():
                             
                     st.subheader("Component Details")
                             
-                    # Capitalize all string columns
                     for col in parts_lookup.columns:
                         parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
                             
-                    # Display the DataFrame as a table with adjusted column widths
                     st.dataframe(parts_lookup.style.set_properties(**{
                         'white-space': 'pre-wrap',
                         'text-align': 'left'
                     }).set_table_styles([
                         {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
                         {'selector': 'td', 'props': [('text-align', 'left')]}
-                    ]), height=400)  # Adjust the height as needed
-
+                    ]), height=400)
 if __name__ == "__main__":
     main()
