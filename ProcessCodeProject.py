@@ -125,7 +125,6 @@ def load_data_from_sharepoint():
                 st.sidebar.error("No suitable lists found")
                 return data
         
-        # Get fields and items
         list_fields = target_list.fields.get().execute_query()
         
         all_items = []
@@ -170,7 +169,6 @@ def load_data_from_sharepoint():
         
         st.sidebar.success(f"Retrieved {len(all_items)} items from SharePoint")
         
-        # Process component validations
         component_validations_data = []
         valid_component_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
         field_mapping = {
@@ -222,7 +220,6 @@ def load_data_from_sharepoint():
         
         data['component_validations_df'] = pd.DataFrame(component_validations_data)
         
-        # Process module validations
         module_validation_data = []
         module_field_mapping = {
             'Segment': field_mapping['Segment'],
@@ -283,12 +280,10 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         df = component_validations_df.copy()
         
-        # Convert to lowercase for case-insensitive comparison
         for col in df.columns:
             if df[col].dtype == 'object':
                 df[col] = df[col].str.lower()
         
-        # Apply filters
         filters = []
         if segment and 'Segment' in df.columns:
             filters.append(df['Segment'].str.lower() == segment.lower())
@@ -308,7 +303,6 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         else:
             filtered_df = df.copy()
         
-        # Try relaxed filters if no results
         if filtered_df.empty:
             relaxed_filters = []
             if segment and 'Segment' in df.columns:
@@ -327,7 +321,6 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                 for f in relaxed_filters:
                     filtered_df = filtered_df[f]
             
-            # Try component type variations if still no results
             if filtered_df.empty and component_type and 'Component_Type' in df.columns:
                 component_type_lower = component_type.lower()
                 type_variations = {
@@ -359,7 +352,6 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
         
         process_code = process_codes[0]
         
-        # Extract single character if needed
         if len(process_code) > 1:
             process_code = process_code[0]
         
@@ -488,7 +480,6 @@ def get_predefined_options(component_validations_df):
     
     if not component_validations_df.empty:
         try:
-            # Extract options from data
             for field, col_name in {
                 'supplier': 'Supplier', 
                 'component_generation': 'Component_Generation',
@@ -513,7 +504,6 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     
     filtered_df = df.copy()
     
-    # Apply filters
     if segment and 'Segment' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
     
@@ -539,7 +529,6 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     if filtered_df.empty:
         return []
     
-    # Extract unique values
     options = filtered_df[field].dropna().unique().tolist()
     cleaned_options = list(set([option for option in options if option]))
     
@@ -568,7 +557,6 @@ def main():
     
     predefined_options = get_predefined_options(component_validations_df)
     
-    # Show last refresh time
     local_timezone = pytz.timezone('America/Denver')  
     local_time_obj = datetime.now(local_timezone)
     formatted_time = local_time_obj.strftime('%Y-%m-%d %H:%M:%S')
@@ -583,7 +571,6 @@ def main():
         with subtab1:
             st.write("Enter the component details to generate a single component process code:")
             
-            # Component process code generator
             selected_segment = st.selectbox("Segment", options=predefined_options['segment'], key="segment_component")
             selected_component_type = st.selectbox("Component Type", options=predefined_options['component_type'], key="component_type")
             
@@ -626,7 +613,6 @@ def main():
         with subtab2:
             st.write("Enter the module component details to generate a combined module process code:")
             
-            # Module process code generator - simplified
             components = {
                 "PMIC": {"required": True},
                 "SPD/Hub": {"required": True},
@@ -676,7 +662,6 @@ def main():
             if st.button("Generate Module Process Code"):
                 module_segment = component_codes.get("pmic_segment", "")
                 
-                # Validate required components
                 if not component_codes.get("pmic", ""):
                     st.error("Invalid PMIC process code. Please check PMIC selection.")
                 elif not component_codes.get("spd_hub", ""):
@@ -696,13 +681,11 @@ def main():
                     else:
                         st.success(f"Generated Module Process Code: {process_code}")
                         
-                        # Generate print order
                         if module_segment.lower() == 'server':
                             component_chars = list(process_code)
                             print_order = []
                             
-                            # PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer
-                            positions = [0, 3, 1, 2, 4]  # Positions in process code
+                            positions = [0, 3, 1, 2, 4]
                             for pos in positions:
                                 if pos < len(component_chars):
                                     print_order.append(component_chars[pos])
@@ -712,7 +695,6 @@ def main():
                             st.caption("(Print order: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer)")
                             
                         elif module_segment.lower() == 'client':
-                            # For client, print order is the same as process code
                             st.success(f"Generated Module Process Print Code: {process_code}")
                             st.caption("(Print order: PMIC → SPD/Hub → CKD)")
                         
