@@ -728,9 +728,10 @@ def main():
     
     predefined_options = get_predefined_options(component_validations_df)
     
-    local_timezone = pytz.timezone('America/Denver')  
+    local_timezone = pytz.timezone('America/Denver')
+    tz_abbr = local_time.strftime('%Z')  
     local_time = datetime.now(local_timezone).strftime('%Y-%m-%d %H:%M:%S')
-    st.sidebar.info(f"Data last refreshed: {local_time}")
+    st.sidebar.info(f"Data last refreshed: {local_time} {tz_abbr}")
 
     
     if 'active_tab' not in st.session_state:
