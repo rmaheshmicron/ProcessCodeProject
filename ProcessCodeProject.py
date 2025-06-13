@@ -943,27 +943,59 @@ def main():
                     else:
                         st.success(f"Generated Module Process Code: {process_code}")
                         
+                        # Add the print order display
+                        if module_segment.lower() == 'server':
+                            # For server: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer (if applicable)
+                            component_chars = list(process_code)
+                            print_order = []
+                            
+                            # PMIC (position 0)
+                            if len(component_chars) > 0:
+                                print_order.append(component_chars[0])
+                                
+                            # RCD (position 3)
+                            if len(component_chars) > 3:
+                                print_order.append(component_chars[3])
+                                
+                            # SPD/Hub (position 1)
+                            if len(component_chars) > 1:
+                                print_order.append(component_chars[1])
+                                
+                            # Temp Sensor (position 2)
+                            if len(component_chars) > 2:
+                                print_order.append(component_chars[2])
+                                
+                            # Data Buffer (position 4)
+                            if len(component_chars) > 4:
+                                print_order.append(component_chars[4])
+                                
+                            print_code = ''.join(print_order)
+                            st.success(f"Generated Module Process Print Code: {print_code}")
+                            st.caption("(Print order: PMIC → RCD → SPD/Hub → Temp Sensor → Data Buffer)")
+                            
+                        elif module_segment.lower() == 'client':
+                            # For client: PMIC → SPD/Hub → CKD (if applicable)
+                            component_chars = list(process_code)
+                            print_order = []
+                            
+                            # PMIC (position 0)
+                            if len(component_chars) > 0:
+                                print_order.append(component_chars[0])
+                                
+                            # SPD/Hub (position 1)
+                            if len(component_chars) > 1:
+                                print_order.append(component_chars[1])
+                                
+                            # CKD (position 2)
+                            if len(component_chars) > 2:
+                                print_order.append(component_chars[2])
+                                
+                            print_code = ''.join(print_order)
+                            st.success(f"Generated Module Process Print Code: {print_code}")
+                            st.caption("(Print order: PMIC → SPD/Hub → CKD)")
+                        
                         explanation = explain_process_code(process_code, module_segment)
                         st.info(explanation)
-                        
-                        parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
-                        if isinstance(parts_lookup, str):
-                            st.warning(parts_lookup)
-                        else:
-                            st.subheader("Component Details")
-                            
-                            # Capitalize all string columns
-                            for col in parts_lookup.columns:
-                                parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
-                            
-                            # Display the DataFrame as a table with adjusted column widths
-                            st.dataframe(parts_lookup.style.set_properties(**{
-                                'white-space': 'pre-wrap',
-                                'text-align': 'left'
-                            }).set_table_styles([
-                                {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
-                                {'selector': 'td', 'props': [('text-align', 'left')]}
-                            ]), height=400)
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
