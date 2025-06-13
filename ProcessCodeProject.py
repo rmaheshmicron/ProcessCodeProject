@@ -284,6 +284,16 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
             if df[col].dtype == 'object':
                 df[col] = df[col].str.lower()
         
+        if component_gen and component_type:
+            component_type_lower = component_type.lower()
+            component_gen_lower = component_gen.lower()
+            
+            if segment and segment.lower() == 'server':
+                if any(ct in component_type_lower for ct in ['temp sensor', 'rcd', 'mrcd', 'data buffer']):
+                    valid_gen_options = ["gen1", "gen2", "gen3", "gen4", "gen5", "na"]
+                    if not any(valid_gen.lower() in component_gen_lower for valid_gen in valid_gen_options):
+                        return f"Invalid component generation for {component_type}. Must be one of: Gen1, Gen2, Gen3, Gen4, Gen5, or NA", None, None
+        
         if segment and 'Segment' in df.columns:
             segment_mask = (df['Segment'].str.lower() == segment.lower()) | \
                            (df['Segment'].str.lower() == 'server/client')
@@ -593,15 +603,23 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
                     return sorted(gen_options)
             elif 'spd/hub' in component_type_lower or 'ckd' in component_type_lower:
                 gen_options = [opt for opt in filtered_df[field].dropna().unique() 
-                              if isinstance(opt, str) and opt.lower().startswith('gen')]
+                              if isinstance(opt, str) and (opt.lower().startswith('gen') or opt.lower() == 'na')]
                 if gen_options:
                     return sorted(gen_options)
         else:
             if any(ct in component_type_lower for ct in ['temp sensor', 'rcd', 'mrcd', 'data buffer']):
+                valid_gen_options = ["Gen1", "Gen2", "Gen3", "Gen4", "Gen5", "NA"]
+                
                 gen_options = [opt for opt in filtered_df[field].dropna().unique() 
-                              if isinstance(opt, str) and opt.lower().startswith('gen')]
-                if gen_options:
-                    return sorted(gen_options)
+                              if isinstance(opt, str) and (
+                                  opt.lower() in [g.lower() for g in valid_gen_options] or
+                                  any(g.lower() in opt.lower() for g in valid_gen_options)
+                              )]
+                
+                if not gen_options:
+                    return valid_gen_options
+                
+                return sorted(gen_options)
     
     if filtered_df.empty:
         return []
@@ -700,7 +718,8 @@ def main():
                 component_codes[f"{component_key}_segment"] = module_segment
                 
                 supplier_options = get_filtered_options(component_validations_df, 'Supplier', 
-                                                      segment=module_segment, component_type=component_name) or predefined_options['supplier']
+                                                      segment=module_segment, 
+                                                      component_type=component_name) or predefined_options['supplier']
                 
                 if not config["required"]:
                     supplier_options = supplier_options + ["None"]
@@ -708,19 +727,49 @@ def main():
                 supplier = st.selectbox("Supplier", options=supplier_options, key=f"{component_key}_supplier")
                 
                 if supplier != "None":
-                    gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                                     segment=module_segment, supplier=supplier) or predefined_options['component_generation']
+                    if module_segment.lower() == 'server' and component_name.lower() in ['temp sensor', 'rcd/mrcd', 'data buffer']:
+                        valid_gen_options = ["Gen1", "Gen2", "Gen3", "Gen4", "Gen5", "NA"]
+                        
+                        data_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                             segment=module_segment, 
+                                                             supplier=supplier, 
+                                                             component_type=component_name)
+                        
+                        if data_gen_options:
+                            valid_data_options = [opt for opt in data_gen_options 
+                                                if any(valid.lower() in opt.lower() for valid in valid_gen_options)]
+                            if valid_data_options:
+                                gen_options = valid_data_options
+                            else:
+                                gen_options = valid_gen_options
+                        else:
+                            gen_options = valid_gen_options
+                    else:
+                        gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                         segment=module_segment, 
+                                                         supplier=supplier, 
+                                                         component_type=component_name) or predefined_options['component_generation']
+                    
                     gen = st.selectbox("Component Generation", options=gen_options, key=f"{component_key}_gen")
                     
                     rev_options = get_filtered_options(component_validations_df, 'Revision', 
-                                                    segment=module_segment, supplier=supplier) or predefined_options['revision']
+                                                    segment=module_segment, 
+                                                    supplier=supplier, 
+                                                    component_type=component_name) or predefined_options['revision']
                     rev = st.selectbox("Revision", options=rev_options, key=f"{component_key}_rev")
+                    
+                    if module_segment.lower() == 'server' and component_name.lower() in ['temp sensor', 'rcd/mrcd', 'data buffer']:
+                        valid_gen_options_lower = [opt.lower() for opt in ["Gen1", "Gen2", "Gen3", "Gen4", "Gen5", "NA"]]
+                        if not any(valid_gen.lower() in gen.lower() for valid_gen in valid_gen_options_lower):
+                            st.error(f"Invalid component generation for {component_name}. Must be one of: Gen1, Gen2, Gen3, Gen4, Gen5, or NA")
+                            component_codes[component_key] = ""
+                            continue
                     
                     code, _, _ = get_component_process_code(
                         module_segment, supplier, gen, rev, component_name, component_validations_df
                     )
                     
-                    if isinstance(code, str) and not code.startswith("No matching") and not code.startswith("Error"):
+                    if isinstance(code, str) and not code.startswith("No matching") and not code.startswith("Error") and not code.startswith("Invalid"):
                         st.success(f"{component_name} Process Code: {code}")
                         component_codes[component_key] = code
                     else:
@@ -745,6 +794,13 @@ def main():
                             module_segment
                         )
                     else:
+                        if not component_codes.get("temp_sensor", ""):
+                            st.error("Invalid Temp Sensor process code. Please check Temp Sensor selection.")
+                            return
+                        if not component_codes.get("rcd_mrcd", ""):
+                            st.error("Invalid RCD/MRCD process code. Please check RCD/MRCD selection.")
+                            return
+                            
                         process_code = get_module_process_code(
                             component_codes.get("pmic", ""),
                             component_codes.get("spd_hub", ""),
@@ -790,10 +846,29 @@ def main():
                                                   component_type=selected_component_type) or predefined_options['supplier']
             selected_supplier = st.selectbox("Supplier", options=supplier_options, key="supplier_component")
             
-            gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
-                                              segment=selected_segment, 
-                                              supplier=selected_supplier,
-                                              component_type=selected_component_type) or predefined_options['component_generation']
+            if selected_segment.lower() == 'server' and selected_component_type.lower() in ['temp sensor', 'rcd', 'muxed rcd', 'data buffer']:
+                valid_gen_options = ["Gen1", "Gen2", "Gen3", "Gen4", "Gen5", "NA"]
+                
+                data_gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                     segment=selected_segment, 
+                                                     supplier=selected_supplier, 
+                                                     component_type=selected_component_type)
+                
+                if data_gen_options:
+                    valid_data_options = [opt for opt in data_gen_options 
+                                        if any(valid.lower() in opt.lower() for valid in valid_gen_options)]
+                    if valid_data_options:
+                        gen_options = valid_data_options
+                    else:
+                        gen_options = valid_gen_options
+                else:
+                    gen_options = valid_gen_options
+            else:
+                gen_options = get_filtered_options(component_validations_df, 'Component_Generation', 
+                                                 segment=selected_segment, 
+                                                 supplier=selected_supplier,
+                                                 component_type=selected_component_type) or predefined_options['component_generation']
+            
             selected_component_gen = st.selectbox("Component Generation", options=gen_options, key="component_gen")
             
             rev_options = get_filtered_options(component_validations_df, 'Revision', 
@@ -803,12 +878,18 @@ def main():
             selected_revision = st.selectbox("Revision", options=rev_options, key="revision_component")
             
             if st.button("Generate Component Process Code"):
+                if selected_segment.lower() == 'server' and selected_component_type.lower() in ['temp sensor', 'rcd', 'muxed rcd', 'data buffer']:
+                    valid_gen_options_lower = [opt.lower() for opt in ["Gen1", "Gen2", "Gen3", "Gen4", "Gen5", "NA"]]
+                    if not any(valid_gen.lower() in selected_component_gen.lower() for valid_gen in valid_gen_options_lower):
+                        st.error(f"Invalid component generation for {selected_component_type}. Must be one of: Gen1, Gen2, Gen3, Gen4, Gen5, or NA")
+                        return
+                
                 process_code, _, code_details = get_component_process_code(
                     selected_segment, selected_supplier, selected_component_gen, selected_revision, 
                     selected_component_type, component_validations_df
                 )
                 
-                if isinstance(process_code, str) and not process_code.startswith("No matching") and not process_code.startswith("Error"):
+                if isinstance(process_code, str) and not process_code.startswith("No matching") and not process_code.startswith("Error") and not process_code.startswith("Invalid"):
                     st.success(f"Generated Process Code: {process_code}")
                     
                     if code_details is not None and not code_details.empty:
