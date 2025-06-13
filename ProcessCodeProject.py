@@ -285,7 +285,9 @@ def get_component_process_code(segment, supplier, component_gen, revision, compo
                 df[col] = df[col].str.lower()
         
         if segment and 'Segment' in df.columns:
-            df = df[df['Segment'].str.lower() == segment.lower()]
+            segment_mask = (df['Segment'].str.lower() == segment.lower()) | \
+                           (df['Segment'].str.lower() == 'server/client')
+            df = df[segment_mask]
             if df.empty:
                 return f"No components found for segment: {segment}", None, None
         
@@ -439,11 +441,19 @@ def lookup_parts_by_process_code(process_code, component_validations_df):
             ]
             
             if not filtered_df.empty:
+                segment_specific_df = filtered_df.copy()
+                
                 for _, row in filtered_df.iterrows():
+                    segment_value = row.get('Segment', "Unknown")
+                    if segment_value.lower() == 'server/client':
+                        segment_display = "Server/Client"
+                    else:
+                        segment_display = segment_value
+                        
                     result_parts.append({
                         'Position': i + 1,
                         'Process Code': code,
-                        'Segment': row.get('Segment', "Unknown"),
+                        'Segment': segment_display,
                         'Supplier': row.get('Supplier', "Unknown"),
                         'Component Generation': row.get('Component_Generation', "Unknown"),
                         'Revision': row.get('Revision', "Unknown"),
@@ -538,16 +548,16 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
     filtered_df = df.copy()
     
     if segment and 'Segment' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Segment'].str.lower() == segment.lower()]
+        segment_mask = (filtered_df['Segment'].str.lower() == segment.lower()) | \
+                       (filtered_df['Segment'].str.lower() == 'server/client')
+        filtered_df = filtered_df[segment_mask]
     
     if supplier and 'Supplier' in filtered_df.columns:
         filtered_df = filtered_df[filtered_df['Supplier'].str.lower() == supplier.lower()]
     
-    # For supplier field, apply component-specific filtering
     if field == 'Supplier' and component_type:
         component_type_lower = component_type.lower()
         
-        # Define valid suppliers for each component type, considering segment
         if segment and segment.lower() == 'client':
             component_supplier_mapping = {
                 'pmic': ['ANPEC', 'MICRON', 'MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'RICHTEK', 'SAMSUNG', 'TI'],
@@ -556,7 +566,7 @@ def get_filtered_options(df, field, segment=None, supplier=None, component_type=
                 'inductor': ['ALPS', 'BOURNS', 'PULSE', 'SEMCO', 'TAIYO YUDEN', 'YAGEO'],
                 'voltage regulator': ['DIODES', 'LITTELFUSE', 'PANASONIC', 'SILERGY']
             }
-        else:  # Server segment or unspecified
+        else:
             component_supplier_mapping = {
                 'pmic': ['ANPEC', 'MICRON', 'MONTAGE', 'MPS', 'RAMBUS', 'RENESAS', 'RICHTEK', 'SAMSUNG', 'TI'],
                 'spd/hub': ['MONTAGE', 'MPS', 'RAMBUS', 'RENESAS'],
