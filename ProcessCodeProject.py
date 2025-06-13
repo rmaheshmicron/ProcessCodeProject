@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 import pytz
+from datetime import datetime
 from office365.runtime.auth.user_credential import UserCredential
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.listitems.caml.query import CamlQuery
@@ -563,9 +563,35 @@ def main():
     tz_abbr = local_time_obj.strftime('%Z')
     st.sidebar.info(f"Data last refreshed: {formatted_time} {tz_abbr}")
     
-    tab1, tab2 = st.tabs(["Process Code Generator", "Part Specification Generator"])
+    tab1, tab2 = st.tabs(["Module Process Code Lookup", "Process Code Generator"])
     
     with tab1:
+        st.write("Enter a process code to look up the associated parts:")
+        
+        lookup_segment = st.selectbox("Segment", options=predefined_options['segment'], key="lookup_segment")
+        lookup_process_code = st.text_input("Process Code", key="lookup_process_code")
+        
+        if st.button("Look Up Parts"):
+            if not lookup_process_code:
+                st.error("Please enter a process code")
+            else:
+                parts_lookup = lookup_parts_by_process_code(lookup_process_code, component_validations_df)
+                if isinstance(parts_lookup, str):
+                    st.error(parts_lookup)
+                else:
+                    st.success(f"Found components for process code: {lookup_process_code}")
+                            
+                    explanation = explain_process_code(lookup_process_code, lookup_segment)
+                    st.info(explanation)
+                            
+                    st.subheader("Component Details")
+                            
+                    for col in parts_lookup.columns:
+                        parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
+                            
+                    st.dataframe(parts_lookup, height=400)
+    
+    with tab2:
         subtab1, subtab2 = st.tabs(["Component", "Module"])
         
         with subtab1:
@@ -700,32 +726,6 @@ def main():
                         
                         explanation = explain_process_code(process_code, module_segment)
                         st.info(explanation)
-    
-    with tab2:
-        st.write("Enter a process code to look up the associated parts:")
-        
-        lookup_segment = st.selectbox("Segment", options=predefined_options['segment'], key="lookup_segment")
-        lookup_process_code = st.text_input("Process Code", key="lookup_process_code")
-        
-        if st.button("Look Up Parts"):
-            if not lookup_process_code:
-                st.error("Please enter a process code")
-            else:
-                parts_lookup = lookup_parts_by_process_code(lookup_process_code, component_validations_df)
-                if isinstance(parts_lookup, str):
-                    st.error(parts_lookup)
-                else:
-                    st.success(f"Found components for process code: {lookup_process_code}")
-                            
-                    explanation = explain_process_code(lookup_process_code, lookup_segment)
-                    st.info(explanation)
-                            
-                    st.subheader("Component Details")
-                            
-                    for col in parts_lookup.columns:
-                        parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
-                            
-                    st.dataframe(parts_lookup, height=400)
 
 if __name__ == "__main__":
     main()
