@@ -963,24 +963,26 @@ def main():
                         explanation = explain_process_code(process_code, module_segment)
                         st.info(explanation)
                         
-                        parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
-                        if isinstance(parts_lookup, pd.DataFrame) and not parts_lookup.empty:
-                            st.subheader("Component Details")
-    
-                            # Capitalize all string columns
-                            for col in parts_lookup.columns:
-                                parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
-    
-                            # Display the DataFrame as a table with adjusted column widths
-                            st.dataframe(parts_lookup.style.set_properties(**{
-                                'white-space': 'pre-wrap',
-                                'text-align': 'left'
-                            }).set_table_styles([
-                                {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
-                                {'selector': 'td', 'props': [('text-align', 'left')]}
-                            ]), height=400)  # Adjust the height as needed
-                        else:
-                            st.warning(str(parts_lookup))
+                parts_lookup = lookup_parts_by_process_code(process_code, component_validations_df)
+                if isinstance(parts_lookup, str):
+                    st.warning(parts_lookup)
+                else:
+                    st.subheader("Component Details")
+                    
+                    # Capitalize all string columns
+                    for col in parts_lookup.columns:
+                        parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
+                    
+                    # Display the DataFrame as a table with adjusted column widths
+                    st.dataframe(parts_lookup.style.set_properties(**{
+                        'white-space': 'pre-wrap',
+                        'text-align': 'left'
+                    }).set_table_styles([
+                        {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
+                        {'selector': 'td', 'props': [('text-align', 'left')]}
+                    ]), height=400)
+                    
+                    part_spec.set_associated_parts(parts_lookup.to_string())
     
     with tab2:
         st.write("Enter a process code to look up the associated parts:")
@@ -993,16 +995,28 @@ def main():
                 st.error("Please enter a process code")
             else:
                 parts_lookup = lookup_parts_by_process_code(lookup_process_code, component_validations_df)
-                if parts_lookup.startswith("No matching") or parts_lookup.startswith("Error"):
+                if isinstance(parts_lookup, str):
                     st.error(parts_lookup)
                 else:
                     st.success(f"Found components for process code: {lookup_process_code}")
-                    
+                            
                     explanation = explain_process_code(lookup_process_code, lookup_segment)
                     st.info(explanation)
-                    
+                            
                     st.subheader("Component Details")
-                    st.text(parts_lookup)
+                            
+                    # Capitalize all string columns
+                    for col in parts_lookup.columns:
+                        parts_lookup[col] = parts_lookup[col].apply(lambda x: str(x).upper())
+                            
+                    # Display the DataFrame as a table with adjusted column widths
+                    st.dataframe(parts_lookup.style.set_properties(**{
+                        'white-space': 'pre-wrap',
+                        'text-align': 'left'
+                    }).set_table_styles([
+                        {'selector': 'th', 'props': [('font-weight', 'bold'), ('text-align', 'left')]},
+                        {'selector': 'td', 'props': [('text-align', 'left')]}
+                    ]), height=400)  # Adjust the height as needed
         
         st.write("---")
         
