@@ -113,8 +113,6 @@ def load_data_from_sharepoint():
         all_lists = ctx.web.lists.get().execute_query()
         available_lists = [list_item.properties.get('Title', '') for list_item in all_lists]
         
-        # Removed the expander for available SharePoint lists
-        
         if list_name not in available_lists:
             st.sidebar.warning(f"List '{list_name}' not found. Looking for similar lists...")
             similar_lists = [l for l in available_lists if 
@@ -131,8 +129,6 @@ def load_data_from_sharepoint():
         list_fields = target_list.fields.get().execute_query()
         field_names = [field.properties.get('InternalName', '') for field in list_fields 
                       if not field.properties.get('Hidden', True) and field.properties.get('InternalName', '')]
-        
-        # Removed the expander for available fields
 
         all_items = []
         page_size = 1000
@@ -180,8 +176,6 @@ def load_data_from_sharepoint():
         
         st.sidebar.success(f"Retrieved {len(all_items)} items from SharePoint")
         
-        # Removed the expander for sample item properties
-        
         component_validations_data = []
         
         field_mapping = {
@@ -193,8 +187,6 @@ def load_data_from_sharepoint():
             'Process_Code': 'Process_x0020_Code',
             'MPN': 'Supplier_x0020_PN'
         }
-        
-        # Removed the expander for field mapping
         
         valid_component_types = ["CKD", "Data Buffer", "Inductor", "Muxed RCD", "PMIC", "RCD", "SPD/Hub", "Temp Sensor", "Voltage Regulator"]
 
@@ -240,9 +232,6 @@ def load_data_from_sharepoint():
         component_validations_df = pd.DataFrame(component_validations_data)
         data['component_validations_df'] = component_validations_df
         
-        # Removed the success message for component validations
-        # Removed the expander for sample data
-        
         module_validation_data = []
         
         module_field_mapping = {
@@ -281,8 +270,6 @@ def load_data_from_sharepoint():
         
         module_validation_df = pd.DataFrame(module_validation_data)
         data['module_validation_df'] = module_validation_df
-        
-        # Removed the success message for module validations
         
     except Exception as e:
         st.sidebar.error(f"Error connecting to SharePoint: {str(e)}")
