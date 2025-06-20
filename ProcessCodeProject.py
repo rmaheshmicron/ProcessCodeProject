@@ -1,14 +1,11 @@
 import streamlit as st
 import pandas as pd
 import pytz
-import pyodbc
-import sqlalchemy
 import urllib.parse
 from datetime import datetime
 from office365.runtime.auth.user_credential import UserCredential
 from office365.sharepoint.client_context import ClientContext
 from office365.sharepoint.listitems.caml.query import CamlQuery
-from sqlalchemy import create_engine
 
 class PartSpecification:
     def __init__(self):
