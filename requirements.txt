@@ -1,8 +1,0 @@
-office365-rest-python-client==2.5.3
-snowflake-snowpark-python
-streamlit
-pandas
-requests
-pytz
-pyodbc
-sqlalchemy
