@@ -109,7 +109,7 @@ def get_rest_api_connection_params():
     
     username = st.sidebar.text_input(
         "Username", 
-        value="ProcessCodeAdmin",  # Changed from "ProcessCodeAdmin" to "admin"
+        value="api_user",  # Changed from "ProcessCodeAdmin" to "admin"
         key="rest_api_username",
         help="API username"
     )
@@ -117,7 +117,7 @@ def get_rest_api_connection_params():
     password = st.sidebar.text_input(
         "Password", 
         type="password",
-        value="MicronPC123",
+        value="ProcessCodeAdmin",
         key="rest_api_password",
         help="API password"
     )
@@ -241,58 +241,86 @@ def check_api_server_status():
     """Check if API server is running and provide troubleshooting info"""
     st.sidebar.subheader("🔍 API Server Diagnostics")
     
-    if st.sidebar.button("Check Server Status", key="check_server_status"):
-        base_url, username, password, timeout = get_rest_api_connection_params()
-        
-        # Extract host and port from URL
+    # Add this temporarily in your sidebar for testing
+if st.sidebar.button("🔍 Test All Credentials", key="test_all_creds"):
+    base_url, _, _, timeout = get_rest_api_connection_params()
+    
+    st.sidebar.info("Testing all possible credential combinations...")
+    
+    # Test all possible credential combinations from your API
+    test_credentials = [
+        ("admin", "MicronPC123"),
+        ("api_user", "ProcessCodeAdmin"), 
+        ("process_code_user", "process_code_pass"),
+        ("ProcessCodeAdmin", "MicronPC123")
+    ]
+    
+    working_creds = None
+    
+    for username, password in test_credentials:
         try:
-            from urllib.parse import urlparse
-            parsed_url = urlparse(base_url)
-            host = parsed_url.hostname or 'localhost'
-            port = parsed_url.port or 8000
+            st.sidebar.info(f"Testing: {username} / {password}")
             
-            st.sidebar.info(f"Checking connection to {host}:{port}")
+            session = requests.Session()
+            session.timeout = timeout
             
-            # Test basic connectivity without authentication
-            import socket
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(5)
+            auth_string = f"{username}:{password}"
+            encoded_auth = base64.b64encode(auth_string.encode()).decode()
+            session.headers.update({
+                'Authorization': f'Basic {encoded_auth}',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            })
             
-            try:
-                result = sock.connect_ex((host, port))
-                if result == 0:
-                    st.sidebar.success(f"✅ Port {port} is open and accepting connections")
+            # Test health endpoint first
+            health_url = f"{base_url.rstrip('/')}/health"
+            health_response = session.get(health_url)
+            
+            if health_response.status_code == 200:
+                st.sidebar.success(f"✅ Health check passed for: {username}")
+                
+                # Test authenticated endpoint
+                test_url = f"{base_url.rstrip('/')}/modulebom-simple/count"
+                response = session.get(test_url)
+                
+                if response.status_code == 200:
+                    st.sidebar.success(f"🎉 **WORKING CREDENTIALS FOUND!**")
+                    st.sidebar.success(f"Username: {username}")
+                    st.sidebar.success(f"Password: {password}")
+                    working_creds = (username, password)
                     
-                    # Now test HTTP connection
+                    # Show the response
                     try:
-                        response = requests.get(f"{base_url.rstrip('/')}/health", timeout=5)
-                        st.sidebar.success(f"✅ API server is responding (HTTP {response.status_code})")
-                        
-                        if response.status_code == 200:
-                            try:
-                                health_data = response.json()
-                                st.sidebar.json(health_data)
-                            except:
-                                st.sidebar.info("Health endpoint responded but no JSON data")
-                        
-                    except requests.exceptions.RequestException as e:
-                        st.sidebar.error(f"❌ HTTP request failed: {str(e)}")
-                        
+                        data = response.json()
+                        st.sidebar.json(data)
+                    except:
+                        st.sidebar.info(f"Response: {response.text}")
+                    break
                 else:
-                    st.sidebar.error(f"❌ Cannot connect to port {port}")
-                    st.sidebar.error("**Possible issues:**")
-                    st.sidebar.error("1. API server is not running")
-                    st.sidebar.error("2. Wrong port number")
-                    st.sidebar.error("3. Firewall blocking connection")
-                    st.sidebar.error("4. Server running on different host")
-                    
-            except Exception as e:
-                st.sidebar.error(f"❌ Connection test failed: {str(e)}")
-            finally:
-                sock.close()
+                    st.sidebar.error(f"❌ Auth failed for {username}: HTTP {response.status_code}")
+                    if response.status_code == 401:
+                        st.sidebar.error("  → Invalid credentials")
+                    elif response.status_code == 403:
+                        st.sidebar.error("  → Access denied")
+            else:
+                st.sidebar.error(f"❌ Health check failed for {username}: HTTP {health_response.status_code}")
                 
         except Exception as e:
-            st.sidebar.error(f"❌ Error parsing URL: {str(e)}")
+            st.sidebar.error(f"❌ Error testing {username}: {str(e)}")
+        finally:
+            if 'session' in locals():
+                session.close()
+    
+    if working_creds:
+        st.sidebar.success("🔧 **Update your default credentials to:**")
+        st.sidebar.code(f'username = "{working_creds[0]}"')
+        st.sidebar.code(f'password = "{working_creds[1]}"')
+    else:
+        st.sidebar.error("❌ No working credentials found!")
+        st.sidebar.error("**Possible issues:**")
+        st.sidebar.error("1. API server credentials don't match configuration")
+        st.sidebar.error("2. API server is not running")
+        st.sidebar.error("3. Network connectivity issues")
 
 def test_rest_api_connection_detailed():
     """Enhanced connection test function for REST API"""

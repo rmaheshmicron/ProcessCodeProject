@@ -17,7 +17,8 @@ class APIConfig:
 
 class AuthConfig:
     USERS = {
-        "api_user": "ProcessCodeAdmin",
-        "admin": "MicronPC123", 
-        "process_code_user": "process_code_pass"
+        "admin": "MicronPC123",
+        "api_user": "ProcessCodeAdmin", 
+        "process_code_user": "process_code_pass",
+        "ProcessCodeAdmin": "MicronPC123"
     }
