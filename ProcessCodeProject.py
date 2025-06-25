@@ -102,7 +102,7 @@ def get_rest_api_connection_params():
     
     base_url = st.sidebar.text_input(
         "API Base URL", 
-        value=st.session_state.get('rest_api_base_url', 'http://localhost:8000'),  # Updated default
+        value=st.session_state.get('rest_api_base_url', 'http://localhost:8001'),  # Updated default
         key="rest_api_base_url",
         help="Base URL for the REST API endpoint"
     )
